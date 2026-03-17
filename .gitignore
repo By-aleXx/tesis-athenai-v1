@@ -1,0 +1,89 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Logs
+*.log
+athenai-dashboard/backend.log
+athenai-dashboard/frontend.log
+
+# PIDs
+.backend.pid
+.frontend.pid
+
+# LocalStack/AWS
+.aws/
+.localstack/
+
+# ---- Archivos grandes (superan límite 100MB de GitHub) ----
+*.zip
+*.gz
+*.tar
+*.tar.gz
+
+# ---- Modelos ML / Pickles ----
+*.pkl
+*.joblib
+*.h5
+*.pt
+*.pth
+models/
+training/models/
+lambda_package_lite/models/
+athenai-dashboard/models/
+
+# ---- Datasets ----
+data/*.csv
+athenai-dashboard/data/*.csv
+training/data/
+
+# ---- Directorios de despliegue Lambda ----
+lambda_package_lite/
+lambda_package/
+
+# ---- Variables de entorno (contienen credenciales) ----
+.env
+# Mantener el ejemplo de configuración
+!.env.example
+
+# ---- Bases de datos locales ----
+*.db
+*.sqlite
+*.sqlite3
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Node/Frontend
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log

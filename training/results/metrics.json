@@ -1,0 +1,78 @@
+{
+  "logistic_regression": {
+    "metrics": {
+      "accuracy": 0.9996167113836719,
+      "precision": 1.0,
+      "recall": 0.999537037037037,
+      "f1_score": 0.9997684649224358,
+      "auc_roc": 1.0
+    },
+    "confusion_matrix": [
+      [
+        449,
+        0
+      ],
+      [
+        1,
+        2159
+      ]
+    ]
+  },
+  "random_forest": {
+    "metrics": {
+      "accuracy": 0.9992334227673438,
+      "precision": 1.0,
+      "recall": 0.9990740740740741,
+      "f1_score": 0.999536822603057,
+      "auc_roc": 0.999998968902087
+    },
+    "confusion_matrix": [
+      [
+        449,
+        0
+      ],
+      [
+        2,
+        2158
+      ]
+    ]
+  },
+  "xgboost": {
+    "metrics": {
+      "accuracy": 0.9996167113836719,
+      "precision": 0.999537251272559,
+      "recall": 1.0,
+      "f1_score": 0.9997685720897941,
+      "auc_roc": 0.9999969067062608
+    },
+    "confusion_matrix": [
+      [
+        448,
+        1
+      ],
+      [
+        0,
+        2160
+      ]
+    ]
+  },
+  "svm": {
+    "metrics": {
+      "accuracy": 0.9049444231506324,
+      "precision": 0.9267857142857143,
+      "recall": 0.9611111111111111,
+      "f1_score": 0.9436363636363636,
+      "auc_roc": 0.9713509444856884
+    },
+    "confusion_matrix": [
+      [
+        285,
+        164
+      ],
+      [
+        84,
+        2076
+      ]
+    ]
+  }
+}

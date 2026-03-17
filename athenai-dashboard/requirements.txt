@@ -1,0 +1,48 @@
+# AthenAI - Requirements
+# Dependencias de Python para el proyecto
+
+# Web Framework
+Flask==2.3.3
+Flask-CORS==4.0.0
+flask-compress
+flasgger
+
+# Base de datos ORM
+SQLAlchemy
+
+# AWS SDK
+boto3==1.28.25
+botocore==1.31.25
+
+# AWS X-Ray (Distributed Tracing)
+aws-xray-sdk==2.12.0
+
+# Redis
+redis==5.0.0
+
+# System Monitoring
+psutil==5.9.5
+
+# HTTP Requests
+requests==2.31.0
+
+# Machine Learning
+scikit-learn
+xgboost==2.0.3
+numpy
+pandas
+joblib
+
+# Utilidades
+python-dotenv==1.0.0
+
+# Validación de entrada
+marshmallow
+
+# Autenticación JWT
+PyJWT
+bcrypt
+
+# Testing
+pytest
+pytest-cov

@@ -1,0 +1,90 @@
+# AthenAI - Docker Compose Configuration
+# Configuración para desarrollo local con LocalStack y Redis
+
+version: '3.8'
+
+services:
+  # LocalStack - Simula servicios AWS localmente
+  localstack:
+    image: localstack/localstack:latest
+    container_name: athenai-localstack
+    ports:
+      - "4566:4566"  # LocalStack endpoint
+      - "4571:4571"  # LocalStack dashboard (opcional)
+    environment:
+      - SERVICES=s3,dynamodb,secretsmanager,sns,ses,logs,cloudwatch,kinesis,lambda,sagemaker
+      - DEBUG=1
+      - DATA_DIR=/tmp/localstack/data
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - "./localstack-data:/tmp/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    networks:
+      - athenai-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis - Caché para IP Blocker y Rate Limiter
+  redis:
+    image: redis:7-alpine
+    container_name: athenai-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass athenai_redis_pass
+    volumes:
+      - "./redis-data:/data"
+    networks:
+      - athenai-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # AthenAI API Backend
+  athenai-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: athenai-api
+    ports:
+      - "5000:5000"
+    environment:
+      # LocalStack
+      - USE_LOCALSTACK=true
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+      
+      # Redis
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=athenai_redis_pass
+      
+      # Flask
+      - FLASK_APP=api_backend.py
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+    depends_on:
+      localstack:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - athenai-network
+    command: python api_backend.py
+
+networks:
+  athenai-network:
+    driver: bridge
+
+volumes:
+  localstack-data:
+  redis-data:

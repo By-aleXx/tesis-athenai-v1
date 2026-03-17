@@ -1,0 +1,20 @@
+{
+    "Records": [
+        {
+            "kinesis": {
+                "kinesisSchemaVersion": "1.0",
+                "partitionKey": "test",
+                "sequenceNumber": "1",
+                "data": "eyJodHRwX21ldGhvZCI6IkdFVCIsInVybF9wYXRoIjoiL2FwaS91c2Vycz9pZD0xIFVOSU9OIFNFTEVDVCAqIEZST00gcGFzc3dvcmRzLS0iLCJpcF9hZGRyZXNzIjoiMjAzLjAuMTEzLjUwIiwicmF3X2xvZyI6IkdFVCAvYXBpL3VzZXJzP2lkPTEgVU5JT04gU0VMRUNUICogRlJPTSBwYXNzd29yZHMtLSBIVFRQLzEuMSJ9",
+                "approximateArrivalTimestamp": 1234567890
+            },
+            "eventSource": "aws:kinesis",
+            "eventVersion": "1.0",
+            "eventID": "shardId-000000000000:1",
+            "eventName": "aws:kinesis:record",
+            "invokeIdentityArn": "arn:aws:iam::000000000000:role/lambda-execution-role",
+            "awsRegion": "us-east-1",
+            "eventSourceARN": "arn:aws:kinesis:us-east-1:000000000000:stream/athenai-logs"
+        }
+    ]
+}
