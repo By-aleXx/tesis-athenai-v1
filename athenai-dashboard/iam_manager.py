@@ -199,13 +199,15 @@ def require_permission(permission: Permission):
             
             if not user_data:
                 # Try to get from Authorization header
-                from auth_service import AuthService
-                auth_service = AuthService()
-                
+                from auth_service import auth_service_instance
+                import jwt as _jwt
                 token = request.headers.get('Authorization', '').replace('Bearer ', '')
                 if token:
-                    user_data = auth_service.verify_token(token)
-                
+                    try:
+                        user_data = auth_service_instance.verify_access_token(token)
+                    except (_jwt.ExpiredSignatureError, _jwt.InvalidTokenError, Exception):
+                        user_data = None
+
                 if not user_data:
                     iam_manager.log_access('unknown', 'unknown', f.__name__, request.path, False)
                     return jsonify({'error': 'Unauthorized'}), 401
@@ -249,13 +251,15 @@ def require_role(role: Role):
             
             if not user_data:
                 # Try to get from Authorization header
-                from auth_service import AuthService
-                auth_service = AuthService()
-                
+                from auth_service import auth_service_instance
+                import jwt as _jwt
                 token = request.headers.get('Authorization', '').replace('Bearer ', '')
                 if token:
-                    user_data = auth_service.verify_token(token)
-                
+                    try:
+                        user_data = auth_service_instance.verify_access_token(token)
+                    except (_jwt.ExpiredSignatureError, _jwt.InvalidTokenError, Exception):
+                        user_data = None
+
                 if not user_data:
                     return jsonify({'error': 'Unauthorized'}), 401
             

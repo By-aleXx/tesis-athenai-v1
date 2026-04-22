@@ -17,7 +17,8 @@ load_dotenv()
 import jwt
 import bcrypt
 import boto3
-from datetime import datetime, timedelta
+from botocore.config import Config as BotocoreConfig
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from flask import request, jsonify
 import uuid
@@ -35,26 +36,41 @@ class AuthService:
             jwt_secret: Clave secreta para tokens JWT
             jwt_refresh_secret: Clave secreta para refresh tokens
         """
+        _boto_cfg = BotocoreConfig(connect_timeout=2, read_timeout=5, retries={'max_attempts': 0})
         self.dynamodb = dynamodb_client or boto3.client(
             'dynamodb',
-            endpoint_url=os.environ['AWS_ENDPOINT_URL'],
+            endpoint_url=os.getenv('AWS_ENDPOINT_URL', 'http://localhost:4566'),
             region_name=os.getenv('AWS_REGION', 'us-east-1'),
-            aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
-            aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY']
+            aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID', 'test'),
+            aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY', 'test'),
+            config=_boto_cfg
         )
-        
-        self.jwt_secret = jwt_secret or os.environ['JWT_SECRET_KEY']
-        self.jwt_refresh_secret = jwt_refresh_secret or os.environ['JWT_REFRESH_SECRET_KEY']
+
+        _jwt = jwt_secret or os.getenv('JWT_SECRET_KEY', '')
+        _jwt_refresh = jwt_refresh_secret or os.getenv('JWT_REFRESH_SECRET_KEY', '')
+        if not _jwt:
+            raise ValueError("JWT_SECRET_KEY no está configurada en variables de entorno")
+        if not _jwt_refresh:
+            raise ValueError("JWT_REFRESH_SECRET_KEY no está configurada en variables de entorno")
+        self.jwt_secret = _jwt
+        self.jwt_refresh_secret = _jwt_refresh
         
         self.table_name = 'athenai_users'
-        self.access_token_expiry = timedelta(hours=1)  # 1 hora
-        self.refresh_token_expiry = timedelta(days=7)  # 7 días
-        
-        # Crear tabla si no existe
-        self._create_table_if_not_exists()
-        
-        # Crear usuario admin por defecto
-        self._create_default_admin()
+        self.access_token_expiry = timedelta(hours=1)
+        self.refresh_token_expiry = timedelta(days=7)
+
+        # Offline fallback: in-memory user store when DynamoDB is unreachable
+        self._offline_mode = False
+        self._mem_users_by_username: dict = {}
+        self._mem_users_by_id: dict = {}
+
+        try:
+            self._create_table_if_not_exists()
+            self._create_default_admin()
+        except Exception as _db_err:
+            logger.warning(f"⚠️  DynamoDB no disponible — modo offline en memoria: {_db_err}")
+            self._offline_mode = True
+            self._create_default_users_offline()
     
     def _create_table_if_not_exists(self):
         """Crea la tabla de usuarios si no existe"""
@@ -110,10 +126,30 @@ class AuthService:
                 email='admin@athenai.com',
                 role='admin'
             )
-            logger.info("✅ Usuario admin creado: username=admin, password=admin123")
+            logger.info("✅ Usuario admin por defecto creado correctamente")
         except Exception as e:
             logger.error(f"Error creando usuario admin: {e}")
     
+    def _create_default_users_offline(self):
+        """Populates in-memory store with default users when DynamoDB is unavailable."""
+        defaults = [
+            ('admin',   os.getenv('ADMIN_PASSWORD',   'admin123'),   'admin@athenai.com',   'admin'),
+            ('analyst', os.getenv('ANALYST_PASSWORD', 'analyst123'), 'analyst@athenai.com', 'analyst'),
+            ('viewer',  os.getenv('VIEWER_PASSWORD',  'viewer123'),  'viewer@athenai.com',  'viewer'),
+        ]
+        for username, password, email, role in defaults:
+            uid = str(uuid.uuid4())
+            now = datetime.now(timezone.utc).isoformat()
+            user = {
+                'user_id': uid, 'username': username,
+                'password_hash': self.hash_password(password),
+                'email': email, 'role': role,
+                'created_at': now, 'last_login': now, 'is_active': True,
+            }
+            self._mem_users_by_username[username] = user
+            self._mem_users_by_id[uid] = user
+        logger.info("✅ Usuarios offline en memoria: admin / analyst / viewer")
+
     def hash_password(self, password: str) -> str:
         """Hash de password con bcrypt"""
         return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
@@ -129,8 +165,8 @@ class AuthService:
             'username': username,
             'role': role,
             'type': 'access',
-            'exp': datetime.utcnow() + self.access_token_expiry,
-            'iat': datetime.utcnow()
+            'exp': datetime.now(timezone.utc) + self.access_token_expiry,
+            'iat': datetime.now(timezone.utc)
         }
         return jwt.encode(payload, self.jwt_secret, algorithm='HS256')
     
@@ -139,26 +175,38 @@ class AuthService:
         payload = {
             'user_id': user_id,
             'type': 'refresh',
-            'exp': datetime.utcnow() + self.refresh_token_expiry,
-            'iat': datetime.utcnow()
+            'exp': datetime.now(timezone.utc) + self.refresh_token_expiry,
+            'iat': datetime.now(timezone.utc)
         }
         return jwt.encode(payload, self.jwt_refresh_secret, algorithm='HS256')
     
-    def verify_access_token(self, token: str) -> dict:
+    def verify_access_token(self, token: str, redis_client=None) -> dict:
         """
         Verifica un access token.
-        
+
         Returns:
             dict con user_id, username, role si es válido
         Raises:
             jwt.ExpiredSignatureError si expiró
-            jwt.InvalidTokenError si es inválido
+            jwt.InvalidTokenError si es inválido o revocado
         """
+        import hashlib
         payload = jwt.decode(token, self.jwt_secret, algorithms=['HS256'])
-        
+
         if payload.get('type') != 'access':
             raise jwt.InvalidTokenError('Token type mismatch')
-        
+
+        # Verificar blacklist de tokens revocados (logout)
+        if redis_client is not None:
+            try:
+                jti = payload.get('jti') or hashlib.sha256(token.encode()).hexdigest()
+                if redis_client.exists(f'blacklisted_token:{jti}'):
+                    raise jwt.InvalidTokenError('Token has been revoked')
+            except jwt.InvalidTokenError:
+                raise
+            except Exception:
+                pass  # Si Redis falla, no bloquear por ello
+
         return {
             'user_id': payload['user_id'],
             'username': payload['username'],
@@ -209,22 +257,28 @@ class AuthService:
         
         user_id = str(uuid.uuid4())
         password_hash = self.hash_password(password)
-        now = datetime.utcnow().isoformat()
-        
-        self.dynamodb.put_item(
-            TableName=self.table_name,
-            Item={
-                'user_id': {'S': user_id},
-                'username': {'S': username},
-                'password_hash': {'S': password_hash},
-                'email': {'S': email},
-                'role': {'S': role},
-                'created_at': {'S': now},
-                'last_login': {'S': now},
-                'is_active': {'BOOL': True}
-            }
-        )
-        
+        now = datetime.now(timezone.utc).isoformat()
+
+        user_record = {
+            'user_id': user_id, 'username': username,
+            'password_hash': password_hash, 'email': email,
+            'role': role, 'created_at': now, 'last_login': now, 'is_active': True,
+        }
+
+        if self._offline_mode:
+            self._mem_users_by_username[username] = user_record
+            self._mem_users_by_id[user_id] = user_record
+        else:
+            self.dynamodb.put_item(
+                TableName=self.table_name,
+                Item={
+                    'user_id': {'S': user_id}, 'username': {'S': username},
+                    'password_hash': {'S': password_hash}, 'email': {'S': email},
+                    'role': {'S': role}, 'created_at': {'S': now},
+                    'last_login': {'S': now}, 'is_active': {'BOOL': True},
+                }
+            )
+
         logger.info(f"✅ Usuario registrado: {username} ({role})")
         
         return {
@@ -236,6 +290,8 @@ class AuthService:
     
     def get_user_by_username(self, username: str) -> dict:
         """Obtiene un usuario por username"""
+        if self._offline_mode:
+            return self._mem_users_by_username.get(username)
         try:
             response = self.dynamodb.query(
                 TableName=self.table_name,
@@ -266,6 +322,8 @@ class AuthService:
     
     def get_user_by_id(self, user_id: str) -> dict:
         """Obtiene un usuario por user_id"""
+        if self._offline_mode:
+            return self._mem_users_by_id.get(user_id)
         try:
             response = self.dynamodb.get_item(
                 TableName=self.table_name,
@@ -312,14 +370,16 @@ class AuthService:
         
         # Actualizar last_login
         try:
-            self.dynamodb.update_item(
-                TableName=self.table_name,
-                Key={'user_id': {'S': user['user_id']}},
-                UpdateExpression='SET last_login = :now',
-                ExpressionAttributeValues={
-                    ':now': {'S': datetime.utcnow().isoformat()}
-                }
-            )
+            now_iso = datetime.now(timezone.utc).isoformat()
+            if self._offline_mode:
+                user['last_login'] = now_iso
+            else:
+                self.dynamodb.update_item(
+                    TableName=self.table_name,
+                    Key={'user_id': {'S': user['user_id']}},
+                    UpdateExpression='SET last_login = :now',
+                    ExpressionAttributeValues={':now': {'S': now_iso}},
+                )
         except Exception as e:
             logger.warning(f"Error actualizando last_login: {e}")
         
@@ -399,8 +459,9 @@ def require_auth(f):
             if not auth_service:
                 return jsonify({'error': 'Auth service not configured'}), 500
             
-            # Verificar token
-            user_data = auth_service.verify_access_token(token)
+            # Verificar token (pasando Redis para comprobar blacklist de logout)
+            redis_client = current_app.config.get('REDIS_CLIENT')
+            user_data = auth_service.verify_access_token(token, redis_client=redis_client)
             
             # Agregar user_data al request
             request.user = user_data
@@ -430,8 +491,16 @@ def require_role(*roles):
             
             if user_role not in roles:
                 return jsonify({'error': f'Insufficient permissions. Required: {roles}'}), 403
-            
+
             return f(*args, **kwargs)
-        
+
         return decorated_function
     return decorator
+
+
+# Instancia global reutilizable (para iam_manager y otros módulos)
+try:
+    auth_service_instance = AuthService()
+except Exception as _asi_err:
+    logger.warning(f"auth_service_instance no disponible: {_asi_err}")
+    auth_service_instance = None

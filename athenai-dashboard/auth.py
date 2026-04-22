@@ -1,3 +1,5 @@
+import os
+import bcrypt
 import jwt
 import datetime
 import time
@@ -5,24 +7,27 @@ from functools import wraps
 from flask import request, jsonify, g
 
 # Configuration
-SECRET_KEY = "your-secret-key-change-in-production"
+_JWT_SECRET = os.getenv('JWT_SECRET_KEY', '')
+if not _JWT_SECRET:
+    raise ValueError("JWT_SECRET_KEY no configurada en variables de entorno")
+SECRET_KEY = _JWT_SECRET
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 
-# Mock user database
+# Mock user database (passwords stored as bcrypt hashes)
 USERS = {
     "admin": {
-        "password_hash": "admin123", # In real app, use bcrypt hash
+        "password_hash": "$2b$12$zCcueiFpNKMJswfA5o8IUeQPBIUSClaHKhouYTFzJlk/0ESXA4oGa",
         "role": "admin",
         "email": "admin@athenai.io"
     },
     "analyst": {
-        "password_hash": "analyst123",
+        "password_hash": "$2b$12$whiKMhcdczRmzFjeBIWsteKGJL7hijZWpseZygqcJMt8VqjVLeE2m",
         "role": "analyst",
         "email": "analyst@athenai.io"
     },
     "viewer": {
-        "password_hash": "viewer123",
+        "password_hash": "$2b$12$0ZWKdvzRMAmou25YydNqeuTFgIJ0S37dkNLUcSR5yKj2f4sbncjnK",
         "role": "viewer",
         "email": "viewer@athenai.io"
     }
@@ -37,8 +42,7 @@ class AuthManager:
         user = USERS.get(username)
         if not user:
             return False
-        # In real app: return check_password_hash(user['password_hash'], password)
-        return user['password_hash'] == password
+        return bcrypt.checkpw(password.encode(), user['password_hash'].encode())
 
     def create_access_token(self, username, role):
         """Create a new access token"""

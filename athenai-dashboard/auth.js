@@ -4,16 +4,41 @@
  * Handles JWT authentication, token refresh, and API requests with auth
  */
 
-const API_URL = 'http://localhost:5000';
+const API_URL = window.location.origin;
 
 class AuthService {
     constructor() {
         this.accessToken = localStorage.getItem('access_token');
         this.refreshToken = localStorage.getItem('refresh_token');
         this.user = JSON.parse(localStorage.getItem('user') || 'null');
+        this._isRedirecting = false; // guard contra redirects múltiples simultáneos
 
-        // Start token refresh timer
-        this.startTokenRefreshTimer();
+        // Verificar si el access token ya expiró al cargar desde localStorage
+        if (this.accessToken && this._isTokenExpired(this.accessToken)) {
+            this.accessToken = null;
+        }
+        // También verificar refresh token
+        if (this.refreshToken && this._isTokenExpired(this.refreshToken)) {
+            this.refreshToken = null;
+            localStorage.removeItem('refresh_token');
+        }
+
+        // Solo iniciar el timer si el token es válido
+        if (this.accessToken) {
+            this.startTokenRefreshTimer();
+        }
+    }
+
+    /**
+     * Decode JWT and check if it is expired
+     */
+    _isTokenExpired(token) {
+        try {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            return payload.exp && (payload.exp * 1000) < Date.now();
+        } catch (e) {
+            return true; // Si no se puede decodificar, tratar como expirado
+        }
     }
 
     /**
@@ -77,33 +102,51 @@ class AuthService {
      * Logout
      */
     async logout() {
-        try {
-            // Call logout endpoint
-            await fetch(`${API_URL}/api/auth/logout`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${this.accessToken}`
-                }
-            });
-        } catch (error) {
-            console.error('Logout error:', error);
+        if (this._isRedirecting) return; // evitar doble logout
+        this._isRedirecting = true;
+
+        // Detener todos los timers PRIMERO para cortar el polling
+        if (this.refreshTimer) {
+            clearInterval(this.refreshTimer);
+            this.refreshTimer = null;
         }
 
-        // Clear local storage
+        // Intentar llamar al backend solo si hay token válido (best-effort)
+        if (this.accessToken) {
+            try {
+                await fetch(`${API_URL}/api/auth/logout`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${this.accessToken}` }
+                });
+            } catch (error) {
+                // Ignorar errores — el objetivo es limpiar localmente
+            }
+        }
+
+        // Limpiar estado y localStorage
         this.accessToken = null;
         this.refreshToken = null;
         this.user = null;
-
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
         localStorage.removeItem('user');
 
-        // Stop refresh timer
-        if (this.refreshTimer) {
-            clearInterval(this.refreshTimer);
-        }
+        window.location.href = 'login.html';
+    }
 
-        // Redirect to login
+    /**
+     * Logout silencioso sin llamar al backend (para casos de token inválido)
+     */
+    _forceRedirectToLogin() {
+        if (this._isRedirecting) return;
+        this._isRedirecting = true;
+        if (this.refreshTimer) { clearInterval(this.refreshTimer); this.refreshTimer = null; }
+        this.accessToken = null;
+        this.refreshToken = null;
+        this.user = null;
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        localStorage.removeItem('user');
         window.location.href = 'login.html';
     }
 
@@ -112,16 +155,14 @@ class AuthService {
      */
     async refreshAccessToken() {
         if (!this.refreshToken) {
-            this.logout();
+            this._forceRedirectToLogin();
             return false;
         }
 
         try {
             const response = await fetch(`${API_URL}/api/auth/refresh`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ refresh_token: this.refreshToken })
             });
 
@@ -132,8 +173,8 @@ class AuthService {
                 localStorage.setItem('access_token', this.accessToken);
                 return true;
             } else {
-                // Refresh token expired, logout
-                this.logout();
+                // Refresh token expirado o inválido — redirigir sin llamar al backend
+                this._forceRedirectToLogin();
                 return false;
             }
         } catch (error) {
@@ -162,8 +203,17 @@ class AuthService {
      */
     async fetch(url, options = {}) {
         if (!this.accessToken) {
-            this.logout();
-            throw new Error('Not authenticated');
+            // FIX 4: Intentar refresh antes de redirigir, en lugar de logout inmediato
+            if (this.refreshToken) {
+                const refreshed = await this.refreshAccessToken();
+                if (!refreshed) {
+                    window.location.href = 'login.html';
+                    throw new Error('Not authenticated');
+                }
+            } else {
+                window.location.href = 'login.html';
+                throw new Error('Not authenticated');
+            }
         }
 
         // Add authorization header
@@ -178,19 +228,20 @@ class AuthService {
                 headers
             });
 
-            // If 401, try to refresh token and retry
+            // Si 401, intentar refresh UNA sola vez
             if (response.status === 401) {
                 const refreshed = await this.refreshAccessToken();
-
                 if (refreshed) {
-                    // Retry with new token
                     headers['Authorization'] = `Bearer ${this.accessToken}`;
-                    return await fetch(url, {
-                        ...options,
-                        headers
-                    });
+                    const retryResponse = await fetch(url, { ...options, headers });
+                    // Si el retry también da 401, el token nuevo es inválido → redirigir
+                    if (retryResponse.status === 401) {
+                        this._forceRedirectToLogin();
+                        throw new Error('Authentication failed after refresh');
+                    }
+                    return retryResponse;
                 } else {
-                    this.logout();
+                    // refreshAccessToken ya manejó la redirección
                     throw new Error('Authentication failed');
                 }
             }
@@ -223,7 +274,8 @@ class AuthService {
                 localStorage.setItem('user', JSON.stringify(this.user));
                 return true;
             } else {
-                this.logout();
+                // Token inválido — redirigir sin llamar al backend de nuevo
+                this._forceRedirectToLogin();
                 return false;
             }
         } catch (error) {

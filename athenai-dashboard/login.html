@@ -196,7 +196,7 @@
         <div class="logo">🛡️ AthenAI</div>
         <div class="subtitle">Security Intelligence Dashboard</div>
 
-        <div id="errorMessage" class="error-message"></div>
+        <div id="errorMessage" class="error-message" style="display:none"></div>
 
         <form id="loginForm">
             <div style="margin-bottom: 1.25rem;">
@@ -220,15 +220,10 @@
             </button>
         </form>
 
-        <div class="demo-credentials">
-            <div style="margin-bottom: 0.5rem; font-weight: 600;">Demo Credentials:</div>
-            <div><strong>Username:</strong> admin</div>
-            <div><strong>Password:</strong> admin123</div>
-        </div>
     </div>
 
     <script>
-        const API_URL = 'http://localhost:5000';
+        const API_URL = window.location.origin;
 
         const loginForm = document.getElementById('loginForm');
         const loginBtn = document.getElementById('loginBtn');
@@ -286,10 +281,11 @@
                 const data = await response.json();
 
                 if (response.ok) {
-                    // Save tokens and user info
+                    // Save tokens; store only non-sensitive claims (no email, last_login)
                     localStorage.setItem('access_token', data.access_token);
                     localStorage.setItem('refresh_token', data.refresh_token);
-                    localStorage.setItem('user', JSON.stringify(data.user));
+                    const { username, role, user_id } = data.user || {};
+                    localStorage.setItem('user', JSON.stringify({ username, role, user_id }));
 
                     // Show success and redirect
                     loginBtn.innerHTML = '✓ Success!';
@@ -306,19 +302,19 @@
                 }
             } catch (error) {
                 console.error('Login error:', error);
-                showError('Connection error. Please check if the API server is running.');
+                showError('Error de conexión. Verifica que el servidor esté activo.');
                 loginBtn.disabled = false;
                 loginBtn.innerHTML = 'Sign In';
             }
         });
 
         function showError(message) {
-            errorMessage.textContent = message;
-            errorMessage.classList.add('show');
-
-            setTimeout(() => {
-                errorMessage.classList.remove('show');
-            }, 5000);
+            if (!errorMessage) return;
+            errorMessage.textContent = message || 'Credenciales incorrectas. Inténtalo de nuevo.';
+            errorMessage.style.display = 'block';
+            errorMessage.style.animation = 'shake 0.5s';
+            clearTimeout(window._errTimer);
+            window._errTimer = setTimeout(() => { errorMessage.style.display = 'none'; }, 8000);
         }
     </script>
 </body>

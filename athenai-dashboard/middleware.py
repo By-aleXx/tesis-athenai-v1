@@ -34,7 +34,7 @@ IGNORED_PATHS = [
 ]
 
 # IP del atacante autorizado para pruebas de seguridad (lee del .env)
-AUTHORIZED_TEST_IP = os.environ['AUTHORIZED_TEST_IP']
+AUTHORIZED_TEST_IP = os.getenv('AUTHORIZED_TEST_IP', '')
 
 
 def get_client_ip():
@@ -206,6 +206,16 @@ class TrafficLoggingMiddleware:
         """
         # Ignorar requests a archivos estáticos y health checks
         if request.path.startswith('/static/') or request.path == '/favicon.ico':
+            return response
+
+        # No registrar peticiones desde localhost (evita loops de self-request)
+        _src_ip = getattr(g, 'client_ip', request.remote_addr) or ''
+        if _src_ip in ('127.0.0.1', '::1', 'localhost') or _src_ip.startswith('192.168.') or _src_ip.startswith('10.'):
+            return response
+
+        # No registrar assets estáticos (html, js, css, etc.)
+        _static_exts = ('.html', '.js', '.css', '.ico', '.png', '.svg', '.woff', '.woff2', '.ttf', '.map')
+        if any(request.path.endswith(ext) for ext in _static_exts):
             return response
         
         # ========================================

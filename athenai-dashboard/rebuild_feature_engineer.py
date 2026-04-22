@@ -5,7 +5,10 @@ Script para recrear el feature_engineer.pkl sin dependencias del módulo trainin
 import joblib
 import pandas as pd
 import sys
-sys.path.append('..')
+from pathlib import Path
+
+_BASE_DIR = Path(__file__).parent
+sys.path.append(str(_BASE_DIR))
 
 from feature_engineering import FeatureEngineer
 
@@ -15,7 +18,7 @@ print("="*80 + "\n")
 
 # Cargar datos de entrenamiento
 print("📂 Cargando datos de entrenamiento...")
-train_df = pd.read_csv('../data/train.csv')
+train_df = pd.read_csv(str(_BASE_DIR.parent / 'data' / 'train.csv'))
 print(f"  ✓ Cargados {len(train_df):,} registros\n")
 
 # Crear feature engineer
@@ -26,7 +29,7 @@ fe = FeatureEngineer(max_features=3000)
 fe.fit_tfidf(train_df['text'].tolist())
 
 # Guardar
-output_path = 'models/feature_engineer.pkl'
+output_path = str(_BASE_DIR / 'models' / 'feature_engineer.pkl')
 print(f"\n💾 Guardando en {output_path}...")
 joblib.dump(fe, output_path)
 print("  ✓ Guardado exitosamente")

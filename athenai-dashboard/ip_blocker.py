@@ -134,15 +134,16 @@ class IPBlocker:
             logger.error(f"Error verificando bloqueo de {ip}: {e}")
             return False
     
-    def block_ip(self, ip: str, duration: int = 3600, reason: str = "Security threat") -> bool:
+    def block_ip(self, ip: str, duration: int = 3600, reason: str = "Security threat", auto_blocked: bool = False) -> bool:
         """
         Bloquea una IP.
-        
+
         Args:
             ip: Dirección IP a bloquear
             duration: Duración del bloqueo en segundos (-1 = permanente)
             reason: Razón del bloqueo
-        
+            auto_blocked: True si fue bloqueada automáticamente por el sistema
+
         Returns:
             True si se bloqueó exitosamente
         """
@@ -150,21 +151,22 @@ class IPBlocker:
         if self.is_whitelisted(ip):
             logger.warning(f"⚠️  No se puede bloquear IP en whitelist: {ip}")
             return False
-        
+
         if not self.redis_client:
             logger.warning(f"⚠️  Redis no disponible, no se puede bloquear {ip}")
             return False
-        
+
         try:
             key = f"{self.BLOCKED_PREFIX}{ip}"
-            
+
             # Datos del bloqueo
             block_data = {
                 'ip': ip,
                 'reason': reason,
                 'blocked_at': datetime.now().isoformat(),
                 'duration': duration,
-                'permanent': duration == -1
+                'permanent': duration == -1,
+                'auto_blocked': auto_blocked
             }
             
             # Guardar en Redis

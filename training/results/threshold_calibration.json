@@ -1,0 +1,118 @@
+{
+  "generated_at": "2026-03-30T12:56:43.394130",
+  "model": "XGBoost (calibrado con Isotonic Regression)",
+  "calibration_method": "IsotonicRegression(out_of_bounds='clip') aplicada sobre probabilidades crudas de XGBoost",
+  "selected_criterion": "youden_j",
+  "optimal_threshold": 0.833333,
+  "default_threshold": 0.5,
+  "threshold_candidates": {
+    "youden_j": {
+      "threshold": 0.8333333134651184,
+      "validation_metrics": {
+        "threshold": 0.833333,
+        "accuracy": 0.999617,
+        "precision": 0.999537,
+        "recall": 1.0,
+        "f1_score": 0.999769,
+        "auc_roc": 0.999997,
+        "avg_precision": 0.999999,
+        "brier_score": 0.000319,
+        "confusion_matrix": {
+          "TN": 447,
+          "FP": 1,
+          "FN": 0,
+          "TP": 2161
+        },
+        "false_positive_rate": 0.002232,
+        "false_negative_rate": 0.0,
+        "specificity": 0.997768
+      }
+    },
+    "max_f1": {
+      "threshold": 0.8333333134651184,
+      "validation_metrics": {
+        "threshold": 0.833333,
+        "accuracy": 0.999617,
+        "precision": 0.999537,
+        "recall": 1.0,
+        "f1_score": 0.999769,
+        "auc_roc": 0.999997,
+        "avg_precision": 0.999999,
+        "brier_score": 0.000319,
+        "confusion_matrix": {
+          "TN": 447,
+          "FP": 1,
+          "FN": 0,
+          "TP": 2161
+        },
+        "false_positive_rate": 0.002232,
+        "false_negative_rate": 0.0,
+        "specificity": 0.997768
+      }
+    },
+    "closest_roc_01": {
+      "threshold": 0.8333333134651184,
+      "validation_metrics": {
+        "threshold": 0.833333,
+        "accuracy": 0.999617,
+        "precision": 0.999537,
+        "recall": 1.0,
+        "f1_score": 0.999769,
+        "auc_roc": 0.999997,
+        "avg_precision": 0.999999,
+        "brier_score": 0.000319,
+        "confusion_matrix": {
+          "TN": 447,
+          "FP": 1,
+          "FN": 0,
+          "TP": 2161
+        },
+        "false_positive_rate": 0.002232,
+        "false_negative_rate": 0.0,
+        "specificity": 0.997768
+      }
+    }
+  },
+  "test_set_evaluation": {
+    "default_threshold_0_5": {
+      "threshold": 0.5,
+      "accuracy": 0.999617,
+      "precision": 0.999537,
+      "recall": 1.0,
+      "f1_score": 0.999769,
+      "auc_roc": 0.999997,
+      "avg_precision": 0.999999,
+      "brier_score": 0.00034,
+      "confusion_matrix": {
+        "TN": 448,
+        "FP": 1,
+        "FN": 0,
+        "TP": 2160
+      },
+      "false_positive_rate": 0.002227,
+      "false_negative_rate": 0.0,
+      "specificity": 0.997773
+    },
+    "optimal_threshold": {
+      "threshold": 0.833333,
+      "accuracy": 0.999617,
+      "precision": 0.999537,
+      "recall": 1.0,
+      "f1_score": 0.999769,
+      "auc_roc": 0.999997,
+      "avg_precision": 0.999999,
+      "brier_score": 0.00034,
+      "confusion_matrix": {
+        "TN": 448,
+        "FP": 1,
+        "FN": 0,
+        "TP": 2160
+      },
+      "false_positive_rate": 0.002227,
+      "false_negative_rate": 0.0,
+      "specificity": 0.997773
+    },
+    "delta_f1_score": 0.0,
+    "delta_false_positive_rate": 0.0
+  }
+}

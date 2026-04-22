@@ -62,9 +62,9 @@ class SecretsManagerClient:
             if use_localstack:
                 self.client = boto3.client(
                     'secretsmanager',
-                    endpoint_url=os.environ['AWS_ENDPOINT_URL'],
-                    aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
-                    aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'],
+                    endpoint_url=os.getenv('AWS_ENDPOINT_URL', 'http://localhost:4566'),
+                    aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID', 'test'),
+                    aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY', 'test'),
                     region_name=os.getenv('AWS_REGION', 'us-east-1')
                 )
             else:
@@ -79,24 +79,29 @@ class SecretsManagerClient:
     
     def _init_default_secrets(self):
         """Crea secrets por defecto si no existen"""
+        jwt_secret = os.getenv('JWT_SECRET_KEY')
+        if not jwt_secret:
+            raise ValueError("JWT_SECRET_KEY no está configurada en variables de entorno")
+        db_password = os.getenv('DB_PASSWORD', '')
+        hmac_key = os.getenv('HMAC_SECRET_KEY', '')
         default_secrets = {
             'database': {
                 'host': 'localhost',
                 'port': 4566,
                 'username': 'athenai_user',
-                'password': 'change_me_in_production'
+                'password': db_password
             },
             'api_keys': {
-                'slack_webhook': '',
-                'email_api_key': '',
+                'slack_webhook': os.getenv('SLACK_WEBHOOK_URL', ''),
+                'email_api_key': os.getenv('EMAIL_API_KEY', ''),
                 'sms_api_key': ''
             },
             'hmac_key': {
-                'key': 'default_hmac_key_change_in_production',
+                'key': hmac_key,
                 'algorithm': 'SHA-256'
             },
             'jwt_secret': {
-                'secret': os.getenv('JWT_SECRET_KEY', 'jwt_secret_key_change_in_production'),
+                'secret': jwt_secret,
                 'algorithm': 'HS256',
                 'expiration_hours': 24
             }

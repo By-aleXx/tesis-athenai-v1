@@ -25,18 +25,18 @@ load_dotenv()
 
 # Infraestructura Remota (Dinosaurio Server)
 USE_LOCALSTACK = True
-REMOTE_SERVER_IP = os.environ['REMOTE_SERVER_IP']
+REMOTE_SERVER_IP = os.getenv('REMOTE_SERVER_IP', '127.0.0.1')
 
 # AWS / LocalStack Configuration
-AWS_ENDPOINT_URL = os.environ['AWS_ENDPOINT_URL']
-DYNAMODB_ENDPOINT = os.environ['AWS_ENDPOINT_URL']
-S3_ENDPOINT = os.environ['AWS_ENDPOINT_URL']
+AWS_ENDPOINT_URL = os.getenv('AWS_ENDPOINT_URL', 'http://localhost:4566')
+DYNAMODB_ENDPOINT = os.getenv('AWS_ENDPOINT_URL', 'http://localhost:4566')
+S3_ENDPOINT = os.getenv('AWS_ENDPOINT_URL', 'http://localhost:4566')
 AWS_REGION = os.getenv('AWS_REGION', 'us-east-1')
-AWS_ACCESS_KEY_ID = os.environ['AWS_ACCESS_KEY_ID']
-AWS_SECRET_ACCESS_KEY = os.environ['AWS_SECRET_ACCESS_KEY']
+AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID', 'test')
+AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY', 'test')
 
 # Redis Configuration
-REDIS_HOST = os.environ['REDIS_HOST']
+REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
 REDIS_PORT = int(os.getenv('REDIS_PORT', '6379'))
 REDIS_PASSWORD = os.getenv('REDIS_PASSWORD') or None
 REDIS_DB = 0
@@ -73,7 +73,7 @@ IP_BLOCKER_WHITELIST = [
 RATE_LIMIT_GLOBAL = 100  # requests por minuto
 RATE_LIMIT_API = 60
 RATE_LIMIT_SECURITY = 10
-RATE_LIMIT_AUTH = 30  # Aumentado de 5 a 30 para desarrollo/testing
+RATE_LIMIT_AUTH = 10  # 10 req/min por IP en endpoints de auth (login/refresh)
 
 # Policy Engine Configuration
 POLICY_ENGINE_DEFAULT_THRESHOLD_LOW = 30.0
@@ -97,7 +97,7 @@ ALERT_EMAIL_TO = ["admin@athenai.com"]
 ALERT_SMS_PHONE_NUMBERS = ["+1234567890"]
 
 # Slack Configuration
-ALERT_SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+ALERT_SLACK_WEBHOOK_URL = os.getenv('SLACK_WEBHOOK_URL', '')
 
 # ============================================================================
 # CONFIGURACIÓN DE LOGGING
@@ -119,11 +119,11 @@ LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 # Flask Configuration
 FLASK_HOST = "0.0.0.0"
 FLASK_PORT = 5000
-FLASK_DEBUG = True
-FLASK_ENV = "development"
+FLASK_DEBUG = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
+FLASK_ENV = os.getenv('FLASK_ENV', 'production')
 
 # CORS Configuration
-CORS_ORIGINS = ["*"]  # En producción, especificar dominios permitidos
+CORS_ORIGINS = os.getenv('CORS_ORIGINS', 'http://localhost:3000').split(',')
 
 # ============================================================================
 # FUNCIONES DE UTILIDAD
@@ -139,9 +139,9 @@ def get_aws_config() -> Dict[str, Any]:
     from botocore.config import Config as BotocoreConfig
     
     boto_config = BotocoreConfig(
-        connect_timeout=5,   # máximo 5s de espera para conectar
-        read_timeout=10,     # máximo 10s de espera para leer respuesta
-        retries={'max_attempts': 1}  # sin reintentos adicionales
+        connect_timeout=0.3,  # 300ms — falla rápido si Tailscale no responde
+        read_timeout=1,       # 1s máximo de lectura
+        retries={'max_attempts': 0}  # sin reintentos — falla rápido
     )
     
     config = {

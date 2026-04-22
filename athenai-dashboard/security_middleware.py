@@ -12,6 +12,7 @@ from flask import request, jsonify
 from functools import wraps
 import logging
 import os
+import uuid
 
 # Importar predictor ML asíncrono
 try:
@@ -51,10 +52,20 @@ class SecurityMiddleware:
         self.evidence_store = evidence_store
         self.mock_sagemaker = mock_sagemaker
         self.ai_engine = ai_engine
-        
+
+        # Threat Detector (injection, credential stuffing, impossible travel)
+        try:
+            from threat_detector import ThreatDetector
+            redis_client = ip_blocker.redis_client if ip_blocker else None
+            self.threat_detector = ThreatDetector(ip_blocker=ip_blocker, redis_client=redis_client)
+            logger.info("🛡️  Threat Detector inicializado (injection + stuffing + travel)")
+        except Exception as _td_err:
+            self.threat_detector = None
+            logger.warning(f"⚠️  Threat Detector no disponible: {_td_err}")
+
         # Predictor ML asíncrono (singleton global)
         self.ml_predictor = ml_predictor if ML_ASYNC_AVAILABLE else None
-        
+
         # Tracking de tráfico por IP para ML
         self.traffic_stats = {}  # {ip: {request_count, error_count, response_times, ...}}
         
@@ -72,15 +83,19 @@ class SecurityMiddleware:
     
     def check_security(self):
         """
-        Verifica seguridad antes de cada request:
-        1. IP Blocker
-        2. Rate Limiter
+        Verifica seguridad antes de cada request.
+        Scope: SOLO rutas /api/** (nunca assets, HTML, fuentes o health check).
         """
-        source_ip = request.remote_addr
         path = request.path
-        
-        # Excluir endpoints de health check
-        if path in ['/health', '/api/health']:
+        source_ip = request.remote_addr
+
+        # WAF scope: only API endpoints — static assets, HTML pages and fonts are never analyzed
+        if not path.startswith('/api/') or path == '/api/health':
+            return None
+
+        # Development bypass: localhost and private LAN ranges
+        _LOCAL_IPS = {'127.0.0.1', '::1', 'localhost'}
+        if source_ip in _LOCAL_IPS or (source_ip or '').startswith('192.168.') or (source_ip or '').startswith('10.'):
             return None
         
         # 1. Verificar IP Blocker
@@ -89,33 +104,54 @@ class SecurityMiddleware:
                 if self.ip_blocker.is_blocked(source_ip):
                     block_info = self.ip_blocker.get_block_info(source_ip)
                     
-                    logger.warning(f"🚫 IP bloqueada intentó acceder: {source_ip} → {path}")
-                    
-                    # Log en Evidence Store
+                    incident_id = str(uuid.uuid4())[:8].upper()
+                    logger.warning(f"🚫 IP bloqueada intentó acceder: {source_ip} → {path} | ID: {incident_id}")
+
                     if self.evidence_store:
                         try:
-                            evidence_data = {
-                                'source_ip': source_ip,
-                                'path': path,
-                                'method': request.method,
-                                'reason': 'blocked_ip_attempt',
-                                'block_reason': block_info.get('reason', 'unknown')
-                            }
-                            self.evidence_store.store_block_event(evidence_data)
+                            self.evidence_store.store_block_event({
+                                'source_ip': source_ip, 'path': path,
+                                'method': request.method, 'reason': 'blocked_ip_attempt',
+                                'block_reason': block_info.get('reason', 'unknown'),
+                                'incident_id': incident_id,
+                            })
                         except Exception as e:
                             logger.error(f"Error logging blocked IP attempt: {e}")
-                    
+
                     return jsonify({
                         'error': 'Access Denied',
                         'message': 'Your IP address has been blocked',
                         'reason': block_info.get('reason', 'Security violation'),
                         'blocked_at': block_info.get('blocked_at'),
-                        'expires_at': block_info.get('expires_at')
+                        'expires_at': block_info.get('expires_at'),
+                        'incident_id': incident_id,
                     }), 403
             except Exception as e:
                 logger.error(f"Error checking IP blocker: {e}")
         
-        # 2. ML Threat Detection — ASÍNCRONA (fire-and-forget por IP)
+        # 2. Injection Detection (SQL, XSS, Command Injection)
+        if self.threat_detector:
+            try:
+                query_params = request.query_string.decode('utf-8', errors='ignore')
+                body = request.get_data(as_text=True)
+                threat = self.threat_detector.inspect_request(
+                    ip=source_ip,
+                    method=request.method,
+                    path=path,
+                    query_params=query_params,
+                    body=body[:2000] if body else ''
+                )
+                if threat:
+                    logger.warning(f"🔴 {threat['threat_type']} bloqueado: {source_ip} → {path}")
+                    return jsonify({
+                        'error': 'Forbidden',
+                        'message': f"{threat['threat_type']} detected and blocked",
+                        'threat_type': threat['threat_type'],
+                    }), 403
+            except Exception as e:
+                logger.error(f"Error en injection detection: {e}")
+
+        # 3. ML Threat Detection — ASÍNCRONA (fire-and-forget por IP)
         # Estrategia:
         #   a) Comprobar si el análisis del request ANTERIOR de esta IP terminó con amenaza.
         #      Si es así → bloquear ahora (latencia: <1ms, solo dict lookup).
@@ -141,7 +177,7 @@ class SecurityMiddleware:
                 def _on_prediction_done(label: str, confidence: float, detected_ip: str):
                     """Callback ejecutado en el thread del executor."""
                     confidence_decimal = confidence / 100.0
-                    if label == 'malicious' and confidence_decimal >= 0.8:
+                    if label == 'malicious' and confidence_decimal >= 0.9:
                         logger.warning(
                             f"🤖 ML async: Amenaza detectada → {detected_ip} | "
                             f"Confianza: {confidence_decimal:.2%}"
@@ -151,8 +187,9 @@ class SecurityMiddleware:
                             try:
                                 ip_blocker_ref.block_ip(
                                     detected_ip,
-                                    duration=3600,
-                                    reason=f'ML Async Detection ({confidence_decimal:.2%})'
+                                    duration=900,
+                                    reason=f'ML Async Detection ({confidence_decimal:.2%})',
+                                    auto_blocked=True
                                 )
                             except Exception as be:
                                 logger.error(f"Error blocking IP {detected_ip}: {be}")
@@ -189,15 +226,45 @@ class SecurityMiddleware:
                 if threat_result is not None:
                     # El análisis del request anterior determinó que esta IP es una amenaza
                     confidence_decimal = threat_result.confidence / 100.0
+                    incident_id = str(uuid.uuid4())[:8].upper()
                     logger.warning(
                         f"🤖 ML: Bloqueando {source_ip} → {path} | "
-                        f"Confianza previa: {confidence_decimal:.2%}"
+                        f"Confianza previa: {confidence_decimal:.2%} | ID: {incident_id}"
                     )
+                    # Devolver HTML si el cliente acepta HTML (navegador), JSON si no (API)
+                    accept = request.headers.get('Accept', '')
+                    if 'text/html' in accept:
+                        from flask import make_response
+                        html = f"""<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><title>Acceso bloqueado — AthenAI</title>
+<style>
+  body{{font-family:system-ui,sans-serif;background:#0f172a;color:#f1f5f9;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}}
+  .box{{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:2.5rem;max-width:480px;text-align:center}}
+  .icon{{font-size:3rem;margin-bottom:1rem}}
+  h1{{color:#f87171;font-size:1.5rem;margin:0 0 .75rem}}
+  p{{color:#94a3b8;line-height:1.6;margin:.5rem 0}}
+  .badge{{display:inline-block;background:#1e3a5f;color:#93c5fd;font-family:monospace;font-size:.85rem;padding:.3rem .75rem;border-radius:6px;margin-top:1rem}}
+  a{{color:#818cf8;text-decoration:none}}a:hover{{text-decoration:underline}}
+</style></head>
+<body><div class="box">
+  <div class="icon">🛡️</div>
+  <h1>Acceso bloqueado temporalmente</h1>
+  <p>El sistema de detección de amenazas AthenAI identificó actividad sospechosa en tu dirección IP.</p>
+  <p>El bloqueo se levantará automáticamente en <strong>1 hora</strong>.</p>
+  <p>Si crees que es un error, contacta con soporte indicando el ID de incidente:</p>
+  <div class="badge">Incidente: {incident_id}</div>
+  <p style="margin-top:1.5rem"><a href="/">← Volver al inicio</a></p>
+</div></body></html>"""
+                        resp = make_response(html, 403)
+                        resp.headers['Content-Type'] = 'text/html; charset=utf-8'
+                        return resp
                     return jsonify({
                         'error': 'Threat Detected',
                         'message': 'Suspicious activity detected by ML model',
                         'confidence': f'{confidence_decimal:.2%}',
-                        'blocked_duration': '1 hour'
+                        'blocked_duration': '15 minutes',
+                        'incident_id': incident_id,
                     }), 403
 
             except Exception as e:

@@ -19,7 +19,9 @@ from datetime import datetime, timedelta
 import random
 import json
 import os
+import re
 import time
+from pathlib import Path
 from dotenv import load_dotenv
 
 # Cargar variables de entorno desde .env al inicio
@@ -45,6 +47,19 @@ except Exception as e:
     print(f"⚠️  No se pudo cargar AI Engine: {e}")
     brain = None
 
+# Cargar threshold calibrado desde resultados de entrenamiento
+_THRESHOLD_FILE = Path(__file__).parent.parent / 'training' / 'results' / 'threshold_calibration.json'
+if _THRESHOLD_FILE.exists() and brain:
+    try:
+        with open(_THRESHOLD_FILE) as _f:
+            _cal = json.load(_f)
+        _threshold = _cal.get('optimal_threshold') or _cal.get('threshold')
+        if _threshold is not None:
+            brain.threshold = float(_threshold)
+            print(f"Threshold calibrado cargado: {_threshold:.4f}")
+    except Exception as _e:
+        print(f"No se pudo cargar threshold calibrado: {_e}")
+
 # Importar Policy Engine y Response Actions
 try:
     from policy_engine import policy_engine, PolicyAction
@@ -56,6 +71,9 @@ except Exception as e:
     response_actions = None
 
 # Importar IP Blocker, Rate Limiter y Alert System
+ip_blocker = None
+rate_limiter = None
+alert_system = None
 try:
     from ip_blocker import ip_blocker
     from rate_limiter import rate_limiter
@@ -142,13 +160,9 @@ except Exception as e:
     system_health_monitor = None
 
 app = Flask(__name__)
-# CORS restringido a los orígenes locales conocidos
-CORS(app, origins=[
-    'http://localhost:5000',
-    'http://localhost:8000',
-    'http://127.0.0.1:5000',
-    'http://127.0.0.1:8000',
-])
+# CORS restringido a los orígenes definidos en variable de entorno
+cors_origins = os.getenv('CORS_ORIGINS', 'http://localhost:3000').split(',')
+CORS(app, origins=cors_origins)
 
 # Swagger / OpenAPI Documentation → http://localhost:5000/apidocs/
 try:
@@ -162,6 +176,10 @@ except Exception as e:
 # Configurar Auth Service en app context
 if auth_service:
     app.config['AUTH_SERVICE'] = auth_service
+
+# Exponer Redis para JWT blacklist (reutiliza la conexión del ip_blocker)
+if ip_blocker and getattr(ip_blocker, 'redis_client', None):
+    app.config['REDIS_CLIENT'] = ip_blocker.redis_client
 
 # Configurar CloudWatch en app context
 if cloudwatch_logger:
@@ -229,16 +247,17 @@ def after_request(response):
         if elapsed > 0.5:
             print(f"⚠️ Slow request: {request.method} {request.path} took {elapsed:.2f}s")
     
-    # Add cache headers for static assets only (NOT APIs)
-    if request.path.startswith('/static/') or request.path.endswith(('.css', '.js', '.png', '.jpg', '.svg')):
-        # Cache static assets for 1 year
-        response.cache_control.max_age = 31536000
-        response.cache_control.public = True
-    elif request.path.startswith('/api/'):
-        # APIs: NO cache - the dashboard always needs fresh data
-        response.cache_control.no_cache = True
-        response.cache_control.no_store = True
-        response.cache_control.must_revalidate = True
+    # Cache headers — written directly to avoid Werkzeug's OO API merging conflicts.
+    # NEVER cache error responses: a cached 403/404 would break assets permanently.
+    _path = request.path
+    _static = _path.endswith(('.css', '.js', '.png', '.jpg', '.ico', '.svg', '.woff', '.woff2', '.ttf'))
+    if response.status_code >= 400:
+        response.headers['Cache-Control'] = 'no-store'
+        response.headers['Pragma'] = 'no-cache'
+    elif response.status_code < 300 and _static:
+        response.headers['Cache-Control'] = 'public, max-age=3600'
+    elif _path.startswith('/api/'):
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
         response.headers['Pragma'] = 'no-cache'
         response.headers['Expires'] = '0'
     
@@ -250,9 +269,15 @@ def after_request(response):
 
 @app.route('/')
 def index():
-    """Redirect to login"""
-    from flask import redirect
-    return redirect('/login.html')
+    """Serve landing page"""
+    from flask import send_file
+    return send_file('landing.html')
+
+@app.route('/landing.html')
+def landing_page():
+    """Serve landing page"""
+    from flask import send_file
+    return send_file('landing.html')
 
 @app.route('/login.html')
 def login_page():
@@ -274,8 +299,12 @@ def auth_js():
 
 @app.route('/assets/<path:path>')
 def serve_assets(path):
-    """Serve static assets"""
+    """Serve static assets; 403 for directory traversal attempts"""
     from flask import send_from_directory
+    import os as _os
+    full = _os.path.join('assets', path)
+    if _os.path.isdir(full) or path.endswith('/'):
+        return jsonify({'error': 'Forbidden'}), 403
     return send_from_directory('assets', path)
 
 # Activar middleware de logging de tráfico (DESHABILITADO TEMPORALMENTE)
@@ -285,86 +314,8 @@ def serve_assets(path):
 # AUTHENTICATION ENDPOINTS
 # ============================================
 
-try:
-    from auth import auth_manager
-    print("🔐 Auth Service cargado exitosamente")
-except ImportError as e:
-    print(f"⚠️ Error cargando Auth Service: {e}")
-    auth_manager = None
-
-@app.route('/api/auth/login', methods=['POST'])
-def login():
-    """Login endpoint"""
-    if not auth_manager:
-        return jsonify({'error': 'Auth service not available'}), 503
-        
-    data = request.get_json()
-    if not data or not data.get('username') or not data.get('password'):
-        return jsonify({'error': 'Username and password required'}), 400
-        
-    username = data['username']
-    password = data['password']
-    
-    if auth_manager.verify_password(username, password):
-        user = auth_manager.get_user(username)
-        access_token = auth_manager.create_access_token(username, user['role'])
-        refresh_token = auth_manager.create_refresh_token(username, user['role'])
-        
-        return jsonify({
-            'success': True,
-            'user': user,
-            'access_token': access_token,
-            'refresh_token': refresh_token
-        })
-    else:
-        return jsonify({'error': 'Invalid credentials'}), 401
-
-@app.route('/api/auth/refresh', methods=['POST'])
-def refresh_token():
-    """Refresh access token"""
-    if not auth_manager:
-        return jsonify({'error': 'Auth service not available'}), 503
-        
-    data = request.get_json()
-    refresh_token = data.get('refresh_token')
-    
-    if not refresh_token:
-        return jsonify({'error': 'Refresh token required'}), 400
-        
-    payload = auth_manager.decode_token(refresh_token)
-    if not payload or payload.get('type') != 'refresh':
-        return jsonify({'error': 'Invalid or expired refresh token'}), 401
-        
-    username = payload['sub']
-    role = payload['role']
-    
-    new_access_token = auth_manager.create_access_token(username, role)
-    
-    return jsonify({
-        'access_token': new_access_token
-    })
-
-@app.route('/api/auth/me', methods=['GET'])
-def verify_token():
-    """Verify current token and return user info"""
-    if not auth_manager:
-        return jsonify({'error': 'Auth service not available'}), 503
-
-    auth_header = request.headers.get('Authorization')
-    if not auth_header or not auth_header.startswith('Bearer '):
-        return jsonify({'error': 'Missing or invalid token'}), 401
-    
-    token = auth_header.split(' ')[1]
-    
-    payload = auth_manager.decode_token(token)
-    if not payload or payload.get('type') != 'access':
-        return jsonify({'error': 'Invalid or expired token'}), 401
-        
-    user = auth_manager.get_user(payload['sub'])
-    if not user:
-        return jsonify({'error': 'User not found'}), 404
-        
-    return jsonify({'user': user})
+# Las rutas /api/auth/* están registradas por auth_service más abajo (líneas ~1150+)
+# auth.py legacy fue desactivado — auth_service.py es el único sistema de auth
 
 # Activar Security Middleware (IP Blocker + Rate Limiter + ML)
 try:
@@ -404,13 +355,27 @@ USE_LOCALSTACK = os.getenv('USE_LOCALSTACK', 'true').lower() == 'true'
 if USE_LOCALSTACK:
     s3_client = boto3.client(
         's3',
-        endpoint_url=os.environ['AWS_ENDPOINT_URL'],
-        aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
-        aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'],
+        endpoint_url=os.getenv('AWS_ENDPOINT_URL', 'http://localhost:4566'),
+        aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID', 'test'),
+        aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY', 'test'),
         region_name=os.getenv('AWS_REGION', 'us-east-1')
     )
 else:
     s3_client = boto3.client('s3')
+
+# Estado S3 cacheado al arrancar (evita llamadas de red en cada health check)
+try:
+    import botocore.config as _bc_s3
+    _s3_probe = boto3.client(
+        's3',
+        endpoint_url=s3_client.meta.endpoint_url,
+        region_name=s3_client.meta.region_name,
+        config=_bc_s3.Config(connect_timeout=1, read_timeout=1, retries={'max_attempts': 0})
+    )
+    _s3_probe.list_buckets()
+    _s3_available = True
+except Exception:
+    _s3_available = False
 
 
 def get_alerts_from_s3():
@@ -550,12 +515,8 @@ def get_health():
         'policy_engine': policy_engine is not None,
     }
 
-    # Verificar S3 / LocalStack
-    try:
-        s3_client.list_buckets()
-        services['s3'] = True
-    except Exception:
-        services['s3'] = False
+    # S3: usar estado cacheado — no hacer llamada de red en cada health check
+    services['s3'] = _s3_available
 
     overall = 'healthy' if services['database'] else 'unhealthy'
 
@@ -567,6 +528,8 @@ def get_health():
 
 
 @app.route('/api/model-info', methods=['GET'])
+@require_auth
+@require_role('admin', 'analyst')
 def get_model_info():
     """
     Información de los modelos ML cargados
@@ -663,67 +626,130 @@ def get_stats():
 
 
 @app.route('/api/traffic', methods=['GET'])
+@require_auth
+@require_role('admin', 'analyst', 'viewer')
 def get_traffic():
-    """
-    Datos de tráfico de las últimas 24 horas
-    ---
-    tags:
-      - Dashboard
-    summary: Retorna requests y amenazas por hora (últimas 24h)
-    responses:
-      200:
-        description: Array con datos de tráfico por hora
-        schema:
-          type: array
-          items:
-            type: object
-            properties:
-              time:
-                type: string
-                example: "14:00"
-              requests:
-                type: integer
-                example: 2500
-              threats:
-                type: integer
-                example: 87
-    """
-    """Datos de tráfico para gráfico"""
-    data = generate_traffic_data()
-    return jsonify(data)
+    """Datos de tráfico reales para gráfico (últimas 24h desde SQLite)"""
+    try:
+        from database import SessionLocal
+        from models import TrafficLog
+        from sqlalchemy import func
+
+        now = datetime.utcnow()  # timestamps en BD están en UTC
+        cutoff = now - timedelta(hours=24)
+
+        db = SessionLocal()
+        try:
+            rows = (
+                db.query(
+                    func.strftime('%Y-%m-%d %H', TrafficLog.timestamp).label('day_hour'),
+                    func.count(TrafficLog.id).label('total'),
+                    func.sum(TrafficLog.is_test_attack).label('threats')
+                )
+                .filter(TrafficLog.timestamp >= cutoff)
+                .group_by(func.strftime('%Y-%m-%d %H', TrafficLog.timestamp))
+                .all()
+            )
+        finally:
+            db.close()
+
+        # Construir mapa "YYYY-MM-DD HH" → datos
+        hourly = {r.day_hour: {'requests': r.total, 'threats': int(r.threats or 0)} for r in rows}
+
+        # Rellenar las 24 horas en orden cronológico
+        data = []
+        for i in range(24):
+            slot = now - timedelta(hours=23 - i)
+            key = slot.strftime('%Y-%m-%d %H')
+            entry = hourly.get(key, {'requests': 0, 'threats': 0})
+            data.append({
+                'time': f'{slot.hour:02d}:00',
+                'requests': entry['requests'],
+                'threats': entry['threats'],
+            })
+
+        # Si la BD todavía no tiene datos suficientes, completar con simulados
+        total_real = sum(d['requests'] for d in data)
+        if total_real < 10:
+            data = generate_traffic_data()
+
+        return jsonify(data)
+
+    except Exception as e:
+        app.logger.warning(f"Traffic real data error, falling back to simulated: {e}")
+        return jsonify(generate_traffic_data())
 
 
 @app.route('/api/attacks', methods=['GET'])
+@require_auth
+@require_role('admin', 'analyst', 'viewer')
 def get_attacks():
-    """Tipos de ataques detectados"""
-    # Obtener alertas reales
+    """Tipos de ataques detectados — clasificados desde logs reales de SQLite"""
+    import re
+    try:
+        from database import SessionLocal
+        from models import TrafficLog
+
+        db = SessionLocal()
+        try:
+            logs = (
+                db.query(TrafficLog.path, TrafficLog.query_params, TrafficLog.body)
+                .filter(TrafficLog.is_test_attack == True)
+                .all()
+            )
+        finally:
+            db.close()
+
+        if logs:
+            counts = {'SQL Injection': 0, 'XSS': 0, 'Brute Force': 0, 'Path Traversal': 0, 'Other': 0}
+
+            sql_re = re.compile(r"(?i)(select\s|union\s|insert\s|drop\s|delete\s|update\s|--|;|\bor\b\s+\d|\bor\b\s+')", re.I)
+            xss_re = re.compile(r"(?i)(<script|onerror\s*=|javascript:|alert\s*\(|<img|<svg|onload\s*=)", re.I)
+            path_re = re.compile(r"(\.\./|\.\.\\|/etc/|/proc/|/var/|cmd=|exec=)")
+            brute_re = re.compile(r"(?i)(password|passwd|pwd|login|auth).*=", re.I)
+
+            for log in logs:
+                text = ' '.join(filter(None, [log.path or '', log.query_params or '', log.body or '']))
+                if sql_re.search(text):
+                    counts['SQL Injection'] += 1
+                elif xss_re.search(text):
+                    counts['XSS'] += 1
+                elif path_re.search(text):
+                    counts['Path Traversal'] += 1
+                elif brute_re.search(text):
+                    counts['Brute Force'] += 1
+                else:
+                    counts['Other'] += 1
+
+            attack_data = [
+                {'type': k, 'count': v}
+                for k, v in counts.items()
+                if v > 0
+            ]
+            attack_data.sort(key=lambda x: x['count'], reverse=True)
+            return jsonify(attack_data)
+
+    except Exception as e:
+        app.logger.warning(f"Attack classification error: {e}")
+
+    # Fallback: alertas de S3
     alerts = get_alerts_from_s3()
-    
-    # Contar por tipo
     attack_counts = {}
     for alert in alerts:
-        attack_type = alert['type']
-        attack_counts[attack_type] = attack_counts.get(attack_type, 0) + 1
-    
-    # Formatear para el gráfico
-    attack_data = [
-        {'type': attack_type, 'count': count}
-        for attack_type, count in attack_counts.items()
-    ]
-    
-    # Si no hay datos reales, usar datos de ejemplo
-    if not attack_data:
-        attack_data = [
-            {'type': 'SQL Injection', 'count': random.randint(150, 250)},
-            {'type': 'XSS', 'count': random.randint(100, 180)},
-            {'type': 'Brute Force', 'count': random.randint(60, 120)},
-            {'type': 'CSRF', 'count': random.randint(30, 80)},
-        ]
-    
-    return jsonify(attack_data)
+        t = alert['type']
+        attack_counts[t] = attack_counts.get(t, 0) + 1
+    if attack_counts:
+        return jsonify([{'type': k, 'count': v} for k, v in attack_counts.items()])
+
+    # Sin datos reales disponibles
+    return jsonify([
+        {'type': 'Sin datos', 'count': 0}
+    ])
 
 
 @app.route('/api/system-health', methods=['GET'])
+@require_auth
+@require_role('admin', 'analyst', 'viewer')
 def get_system_health():
     """Get detailed system health metrics"""
     if not system_health_monitor:
@@ -919,6 +945,8 @@ def remove_from_whitelist_endpoint(ip):
 
 
 @app.route('/api/ip-stats', methods=['GET'])
+@require_auth
+@require_role('admin', 'analyst', 'viewer')
 def get_ip_stats():
     """Get IP blocking statistics"""
     if not ip_blocker:
@@ -958,10 +986,214 @@ def get_ip_stats():
 
 
 # ============================================
+# ENDPOINT DE THREAT DASHBOARD
+# ============================================
+
+@app.route('/api/threats/summary', methods=['GET'])
+@require_auth
+@require_role('admin', 'analyst', 'viewer')
+def get_threats_summary():
+    """
+    Resumen de amenazas detectadas y bloqueadas automáticamente
+    ---
+    tags:
+      - Dashboard
+    summary: Devuelve breakdown por tipo de amenaza, timeline de 24h, feed reciente y top IPs
+    security:
+      - BearerAuth: []
+    responses:
+      200:
+        description: Resumen de amenazas
+        schema:
+          type: object
+          properties:
+            total_auto_blocked:
+              type: integer
+              description: Total de IPs bloqueadas automáticamente
+              example: 42
+            most_common_threat:
+              type: string
+              description: Tipo de amenaza más frecuente
+              example: SQL Injection
+            breakdown:
+              type: array
+              description: Conteo por tipo de amenaza (para donut chart)
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    example: SQL Injection
+                  value:
+                    type: integer
+                    example: 18
+            timeline:
+              type: array
+              description: Evolución horaria de las últimas 24h
+              items:
+                type: object
+                properties:
+                  time:
+                    type: string
+                    example: "14:00"
+                  SQL Injection:
+                    type: integer
+                  XSS:
+                    type: integer
+                  Command Injection:
+                    type: integer
+                  Credential Stuffing:
+                    type: integer
+                  Impossible Travel:
+                    type: integer
+                  ML Detection:
+                    type: integer
+            recent_threats:
+              type: array
+              description: Últimas 20 amenazas bloqueadas automáticamente
+              items:
+                type: object
+                properties:
+                  ip:
+                    type: string
+                    example: "203.0.113.45"
+                  threat_type:
+                    type: string
+                    example: SQL Injection
+                  reason:
+                    type: string
+                  blocked_at:
+                    type: string
+                    format: date-time
+                  remaining_seconds:
+                    type: integer
+                  permanent:
+                    type: boolean
+            top_ips:
+              type: array
+              description: Top 10 IPs con mayor número de bloqueos automáticos
+              items:
+                type: object
+                properties:
+                  ip:
+                    type: string
+                    example: "198.51.100.7"
+                  count:
+                    type: integer
+                    example: 5
+      401:
+        description: No autenticado
+      403:
+        description: Rol insuficiente
+      503:
+        description: IP Blocker no disponible
+    """
+    if not ip_blocker:
+        return jsonify({'error': 'IP Blocker not available'}), 503
+
+    try:
+        blocked_ips = ip_blocker.get_all_blocked_ips()
+        now = datetime.utcnow()
+        cutoff_24h = now - timedelta(hours=24)
+
+        # Parsear tipo de amenaza del campo reason
+        THREAT_PATTERN = re.compile(r'^\[([^\]]+)\]')
+        threat_counts = {}
+        timeline_buckets = {}   # "HH:00" → {threat_type: count}
+        recent_threats = []     # últimas 20 auto-bloqueadas
+
+        for entry in blocked_ips:
+            if not entry.get('auto_blocked'):
+                continue
+
+            reason = entry.get('reason', '')
+            m = THREAT_PATTERN.match(reason)
+            threat_type = m.group(1) if m else 'Unknown'
+
+            # Contar por tipo
+            threat_counts[threat_type] = threat_counts.get(threat_type, 0) + 1
+
+            # Timeline últimas 24h
+            blocked_at_str = entry.get('blocked_at', '')
+            try:
+                blocked_at = datetime.fromisoformat(blocked_at_str)
+                # Normalizar a UTC si no tiene tzinfo (almacenado sin tz)
+                if blocked_at >= cutoff_24h:
+                    hour_key = blocked_at.strftime('%H:00')
+                    if hour_key not in timeline_buckets:
+                        timeline_buckets[hour_key] = {}
+                    timeline_buckets[hour_key][threat_type] = \
+                        timeline_buckets[hour_key].get(threat_type, 0) + 1
+            except (ValueError, TypeError):
+                pass
+
+            # Feed reciente
+            recent_threats.append({
+                'ip': entry.get('ip'),
+                'threat_type': threat_type,
+                'reason': reason[len(threat_type) + 2:].strip() if m else reason,
+                'blocked_at': blocked_at_str,
+                'remaining_seconds': entry.get('remaining_seconds'),
+                'permanent': entry.get('permanent', False),
+            })
+
+        # Ordenar feed por blocked_at desc, tomar últimas 20
+        recent_threats.sort(key=lambda x: x.get('blocked_at', ''), reverse=True)
+        recent_threats = recent_threats[:20]
+
+        # Construir timeline completa para las últimas 24h (todos los slots)
+        timeline = []
+        for h in range(24):
+            slot_time = (now - timedelta(hours=23 - h))
+            key = slot_time.strftime('%H:00')
+            entry_data = timeline_buckets.get(key, {})
+            timeline.append({
+                'time': key,
+                'SQL Injection': entry_data.get('SQL Injection', 0),
+                'XSS': entry_data.get('XSS', 0),
+                'Command Injection': entry_data.get('Command Injection', 0),
+                'Credential Stuffing': entry_data.get('Credential Stuffing', 0),
+                'Impossible Travel': entry_data.get('Impossible Travel', 0),
+                'ML Detection': entry_data.get('ML Async Detection', 0),
+            })
+
+        # Breakdown para donut chart
+        breakdown = [
+            {'name': k, 'value': v}
+            for k, v in sorted(threat_counts.items(), key=lambda x: -x[1])
+        ]
+
+        # Top IPs con más amenazas (de todos los bloqueados auto)
+        ip_counts = {}
+        for entry in blocked_ips:
+            if entry.get('auto_blocked'):
+                ip_counts[entry['ip']] = ip_counts.get(entry['ip'], 0) + 1
+        top_ips = [{'ip': k, 'count': v} for k, v in sorted(ip_counts.items(), key=lambda x: -x[1])[:10]]
+
+        total_auto = sum(threat_counts.values())
+        most_common = max(threat_counts, key=threat_counts.get) if threat_counts else None
+
+        return jsonify({
+            'total_auto_blocked': total_auto,
+            'most_common_threat': most_common,
+            'breakdown': breakdown,
+            'timeline': timeline,
+            'recent_threats': recent_threats,
+            'top_ips': top_ips,
+        })
+
+    except Exception as e:
+        logger.error(f"Error in threats/summary: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================
 # ENDPOINTS DE CONTINUOUS LEARNING
 # ============================================
 
 @app.route('/api/continuous-learning/stats', methods=['GET'])
+@require_auth
+@require_role('admin', 'analyst')
 def get_continuous_learning_stats():
     """Get continuous learning statistics and metrics"""
     if not brain:
@@ -1005,6 +1237,8 @@ def get_continuous_learning_stats():
 # ============================================
 
 @app.route('/api/ab-testing/stats', methods=['GET'])
+@require_auth
+@require_role('admin', 'analyst')
 def get_ab_testing_stats():
     """Get A/B testing statistics and comparison"""
     if not brain or not brain.ab_testing_enabled:
@@ -1124,10 +1358,26 @@ def auth_register():
     responses:
       201:
         description: Usuario registrado exitosamente
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+              example: User registered successfully
+            user:
+              type: object
       400:
-        description: El username ya existe
+        description: Solicitud inválida (error genérico de validación de negocio)
+      409:
+        description: El username o email ya está en uso
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
+              example: "Username already exists"
       422:
-        description: Error de validación (email inválido, rol incorrecto, etc.)
+        description: Error de validación de esquema (email inválido, rol incorrecto, etc.)
         schema:
           $ref: '#/definitions/ValidationError'
     """
@@ -1175,23 +1425,98 @@ def auth_login():
           $ref: '#/definitions/LoginResponse'
       401:
         description: Credenciales inválidas
+      403:
+        description: IP bloqueada por detección de credential stuffing
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
+              example: Forbidden
+            threat_type:
+              type: string
+              example: Credential Stuffing
       422:
         description: Error de validación
         schema:
           $ref: '#/definitions/ValidationError'
+      429:
+        description: Demasiados intentos fallidos — bloqueado 15 minutos (brute-force protection)
+        headers:
+          Retry-After:
+            type: integer
+            description: Segundos hasta que se permite reintentar
     """
     """Login de usuario"""
     if not auth_service:
         return jsonify({'error': 'Auth service not available'}), 503
-    
+
+    source_ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
+
+    # Brute-force rate limiting: 5 failed attempts per IP within 15 minutes → 429
+    _LOGIN_KEY = f"login_attempts:{source_ip}"
+    _LOGIN_MAX = 5
+    _LOGIN_TTL = 900  # 15 minutes
+    _redis = rate_limiter.redis_client if rate_limiter else None
+    if _redis:
+        try:
+            _attempts = _redis.get(_LOGIN_KEY)
+            if _attempts and int(_attempts) >= _LOGIN_MAX:
+                app.logger.warning(f"Brute-force threshold exceeded for IP {source_ip}")
+                resp = jsonify({'error': 'Too many login attempts. Try again in 15 minutes.'})
+                resp.headers['Retry-After'] = str(_LOGIN_TTL)
+                return resp, 429
+        except Exception as _e:
+            app.logger.error(f"Login rate-limit check failed: {_e}")
+
     try:
         data = request.validated_data
-        
-        result = auth_service.login(data['username'], data['password'])
-        
+        username = data['username']
+
+        result = auth_service.login(username, data['password'])
+
+        # Login exitoso — resetear contador de intentos fallidos
+        if _redis:
+            try:
+                _redis.delete(_LOGIN_KEY)
+            except Exception as _e:
+                app.logger.error(f"Failed to reset login attempts counter: {_e}")
+
+        # Login exitoso — detectar impossible travel y registrar intento
+        if security_middleware and security_middleware.threat_detector:
+            td = security_middleware.threat_detector
+            user_id = result.get('user', {}).get('user_id', username)
+
+            travel = td.check_impossible_travel(user_id, username, source_ip)
+            if travel:
+                app.logger.warning(f"🌍 Impossible travel post-login: {username} from {source_ip}")
+
+            td.record_login_attempt(source_ip, username, success=True)
+
         return jsonify(result), 200
-    
+
     except ValueError as e:
+        # Login fallido — incrementar contador brute-force
+        if _redis:
+            try:
+                pipe = _redis.pipeline()
+                pipe.incr(_LOGIN_KEY)
+                pipe.expire(_LOGIN_KEY, _LOGIN_TTL)
+                pipe.execute()
+            except Exception as _e:
+                app.logger.error(f"Failed to increment login attempts counter: {_e}")
+        # Login fallido — registrar para detectar credential stuffing
+        if security_middleware and security_middleware.threat_detector:
+            username = (request.validated_data or {}).get('username', 'unknown')
+            threat = security_middleware.threat_detector.record_login_attempt(
+                source_ip, username, success=False
+            )
+            if threat:
+                return jsonify({
+                    'error': 'Forbidden',
+                    'message': threat['threat_type'] + ' detected — IP blocked',
+                    'threat_type': threat['threat_type'],
+                }), 403
         return jsonify({'error': str(e)}), 401
     except Exception as e:
         return jsonify({'error': f'Login failed: {str(e)}'}), 500
@@ -1238,9 +1563,46 @@ def auth_me():
 @app.route('/api/auth/logout', methods=['POST'])
 @require_auth
 def auth_logout():
-    """Logout de usuario (invalidar token)"""
-    # En JWT stateless, el logout se maneja en el cliente
-    # eliminando el token. Aquí solo confirmamos.
+    """
+    Logout de usuario
+    ---
+    tags:
+      - Auth
+    summary: Invalida el JWT activo añadiéndolo a la blacklist de Redis
+    security:
+      - BearerAuth: []
+    responses:
+      200:
+        description: Sesión cerrada correctamente
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+              example: Logged out successfully
+      401:
+        description: Token ausente o inválido
+    """
+    import hashlib, time as _time
+    auth_header = request.headers.get('Authorization', '')
+    token = auth_header.split()[-1] if auth_header else ''
+
+    redis_client = app.config.get('REDIS_CLIENT')
+    if token and redis_client:
+        try:
+            import jwt as _jwt
+            payload = _jwt.decode(
+                token,
+                app.config['AUTH_SERVICE'].jwt_secret,
+                algorithms=['HS256']
+            )
+            jti = payload.get('jti') or hashlib.sha256(token.encode()).hexdigest()
+            ttl = int(payload.get('exp', 0) - _time.time())
+            if ttl > 0:
+                redis_client.setex(f'blacklisted_token:{jti}', ttl, '1')
+        except Exception as e:
+            app.logger.warning(f'Token blacklist failed during logout: {e}')
+
     return jsonify({'message': 'Logged out successfully'}), 200
 
 
@@ -1249,12 +1611,27 @@ def auth_logout():
 # ============================================
 
 @app.route('/api/alerts', methods=['GET'])
+@require_auth
+@require_role('admin', 'analyst', 'viewer')
 def get_alerts():
-    """Alertas recientes desde DynamoDB"""
+    """Alertas recientes desde DynamoDB con soporte de filtros y paginación"""
     try:
+        # Parse query parameters
+        try:
+            limit = min(int(request.args.get('limit', 50)), 200)
+        except (ValueError, TypeError):
+            limit = 50
+        try:
+            offset = max(int(request.args.get('offset', 0)), 0)
+        except (ValueError, TypeError):
+            offset = 0
+        severity_param = request.args.get('severity', '')
+        severity_filter = [s.strip() for s in severity_param.split(',') if s.strip()] if severity_param else []
+        status_filter = request.args.get('status', '').strip()
+
         # Obtener alertas reales de DynamoDB
         if dynamodb_client:
-            db_alerts = dynamodb_client.get_alerts(limit=50)
+            db_alerts = dynamodb_client.get_alerts(limit=200)
             
             # Transformar al formato esperado por el frontend
             alerts = []
@@ -1291,13 +1668,22 @@ def get_alerts():
                 })
             
             # Ordenar por timestamp (más recientes primero)
-            alerts = sorted(alerts, key=lambda x: x.get('id', ''), reverse=True)[:50]
-            
-            if alerts:
-                return jsonify(alerts)
-        
+            alerts = sorted(alerts, key=lambda x: x.get('id', ''), reverse=True)
+
+            # Aplicar filtros de severidad y estado
+            if severity_filter:
+                alerts = [a for a in alerts if a['severity'] in severity_filter]
+            if status_filter:
+                alerts = [a for a in alerts if a['status'] == status_filter]
+
+            total = len(alerts)
+            alerts = alerts[offset:offset + limit]
+
+            if total > 0 or dynamodb_client:
+                return jsonify({'alerts': alerts, 'total': total, 'limit': limit, 'offset': offset})
+
         # Si no hay alertas reales, usar datos de ejemplo
-        alerts = [
+        mock_alerts = [
             {
                 'id': f'alert-{i}',
                 'time': (datetime.now() - timedelta(minutes=i*5)).strftime('%H:%M:%S'),
@@ -1306,69 +1692,29 @@ def get_alerts():
                 'ip': f'{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}',
                 'status': random.choice(['blocked', 'monitoring', 'flagged'])
             }
-            for i in range(10)
+            for i in range(20)
         ]
-        
-        return jsonify(alerts)
-        
+
+        # Aplicar filtros a datos de ejemplo
+        if severity_filter:
+            mock_alerts = [a for a in mock_alerts if a['severity'] in severity_filter]
+        if status_filter:
+            mock_alerts = [a for a in mock_alerts if a['status'] == status_filter]
+
+        total = len(mock_alerts)
+        mock_alerts = mock_alerts[offset:offset + limit]
+
+        return jsonify({'alerts': mock_alerts, 'total': total, 'limit': limit, 'offset': offset})
+
     except Exception as e:
         print(f"Error obteniendo alertas: {e}")
-        return jsonify([]), 500
+        return jsonify({'alerts': [], 'total': 0, 'limit': 50, 'offset': 0}), 500
 
-
-@app.route('/api/health', methods=['GET'])
-def health_check():
-    """
-    Health check del sistema
-    ---
-    tags:
-      - System
-    summary: Verifica el estado del sistema
-    responses:
-      200:
-        description: Sistema saludable
-        schema:
-          type: object
-          properties:
-            status:
-              type: string
-              example: healthy
-            timestamp:
-              type: string
-            services:
-              type: object
-      500:
-        description: Sistema con errores
-    """
-    """Health check del sistema"""
-    try:
-        # Verificar conexión a S3
-        s3_status = 'operational'
-        try:
-            s3_client.head_bucket(Bucket=S3_BUCKET)
-        except:
-            s3_status = 'degraded'
-        
-        health = {
-            'status': 'healthy',
-            'timestamp': datetime.now().isoformat(),
-            'services': {
-                's3': s3_status,
-                'api': 'operational',
-                'ml_models': 'operational'
-            },
-            'uptime': '99.9%'
-        }
-        
-        return jsonify(health)
-    except Exception as e:
-        return jsonify({
-            'status': 'unhealthy',
-            'error': str(e)
-        }), 500
 
 
 @app.route('/api/cache-stats', methods=['GET'])
+@require_auth
+@require_role('admin')
 def get_cache_stats():
     """Estadísticas del caché en memoria del AI Engine"""
     try:
@@ -1394,6 +1740,8 @@ def get_cache_stats():
 
 
 @app.route('/api/traffic-logs', methods=['GET'])
+@require_auth
+@require_role('admin', 'analyst', 'viewer')
 def get_traffic_logs_endpoint():
     """
     Obtiene logs de tráfico HTTP con filtros opcionales
@@ -1475,7 +1823,102 @@ def get_traffic_logs_endpoint():
         }), 500
 
 
+@app.route('/api/traffic-logs/export', methods=['GET'])
+@require_auth
+@require_role('admin', 'analyst', 'viewer')
+def export_traffic_logs():
+    """
+    Exportar logs de tráfico en formato CSV o JSON
+    ---
+    tags:
+      - Dashboard
+    summary: Descarga logs de tráfico HTTP para análisis forense (CSV o JSON)
+    security:
+      - BearerAuth: []
+    parameters:
+      - in: query
+        name: format
+        type: string
+        required: false
+        default: json
+        enum: [csv, json]
+        description: Formato de salida del archivo descargado
+      - in: query
+        name: limit
+        type: integer
+        required: false
+        default: 500
+        description: Número máximo de registros a exportar (máx. 5000)
+      - in: query
+        name: source_ip
+        type: string
+        required: false
+        description: Filtrar registros por IP origen específica
+      - in: query
+        name: exclude_localhost
+        type: boolean
+        required: false
+        default: false
+        description: Si es true, excluye tráfico originado en 127.0.0.1
+    responses:
+      200:
+        description: Archivo descargable con los logs de tráfico
+        headers:
+          Content-Disposition:
+            type: string
+            description: "attachment; filename=traffic_logs_<timestamp>.csv|.json"
+      401:
+        description: No autenticado
+      403:
+        description: Rol insuficiente
+      404:
+        description: Sin datos para exportar (solo aplica para CSV vacío)
+      500:
+        description: Error interno al generar la exportación
+    """
+    import csv, io
+    fmt = request.args.get('format', 'json').lower()  # 'csv' or 'json'
+    limit = min(int(request.args.get('limit', 500)), 5000)
+    source_ip = request.args.get('source_ip')
+    exclude_localhost = request.args.get('exclude_localhost', 'false').lower() == 'true'
+
+    logs = get_traffic_logs(
+        limit=limit,
+        offset=0,
+        is_test_attack=None,
+        source_ip=source_ip,
+        exclude_source_ip='127.0.0.1' if exclude_localhost else None
+    )
+    logs_data = [log.to_dict() for log in logs]
+
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+    if fmt == 'csv':
+        if not logs_data:
+            return jsonify({'error': 'No data to export'}), 404
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=logs_data[0].keys())
+        writer.writeheader()
+        writer.writerows(logs_data)
+        csv_content = output.getvalue()
+        from flask import Response
+        return Response(
+            csv_content,
+            mimetype='text/csv',
+            headers={'Content-Disposition': f'attachment; filename=traffic_logs_{timestamp}.csv'}
+        )
+    else:
+        from flask import Response
+        return Response(
+            json.dumps({'exported_at': datetime.now().isoformat(), 'total': len(logs_data), 'logs': logs_data}, default=str),
+            mimetype='application/json',
+            headers={'Content-Disposition': f'attachment; filename=traffic_logs_{timestamp}.json'}
+        )
+
+
 @app.route('/api/traffic-stats', methods=['GET'])
+@require_auth
+@require_role('admin', 'analyst', 'viewer')
 def get_traffic_stats_endpoint():
     """
     Obtiene estadísticas de tráfico HTTP
@@ -1491,6 +1934,8 @@ def get_traffic_stats_endpoint():
 
 
 @app.route('/api/security/analyze', methods=['POST'])
+@require_auth
+@require_role('admin', 'analyst')
 def analyze_request():
     """
     Analiza una petición HTTP y retorna la decisión de seguridad.
@@ -1619,6 +2064,8 @@ def analyze_request():
 
 
 @app.route('/api/security/stats', methods=['GET'])
+@require_auth
+@require_role('admin', 'analyst', 'viewer')
 def get_security_stats():
     """
     Obtiene estadísticas del sistema de seguridad.
@@ -1649,6 +2096,8 @@ def get_security_stats():
 
 
 @app.route('/api/security/rate-limiter/check', methods=['POST'])
+@require_auth
+@require_role('admin', 'analyst')
 def check_rate_limit_endpoint():
     """
     Verifica el rate limit para un identificador.
@@ -1680,6 +2129,8 @@ def check_rate_limit_endpoint():
 # ==================== ML ENDPOINTS (Mock SageMaker) ====================
 
 @app.route('/api/ml/models', methods=['GET'])
+@require_auth
+@require_role('admin', 'analyst')
 def list_ml_models():
     """Lista modelos en el registry"""
     try:
@@ -1715,6 +2166,8 @@ def list_ml_models():
 
 
 @app.route('/api/ml/models/<model_name>', methods=['GET'])
+@require_auth
+@require_role('admin', 'analyst')
 def get_ml_model_info(model_name):
     """Obtiene información de un modelo específico"""
     try:
@@ -1745,7 +2198,65 @@ def get_ml_model_info(model_name):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/ml/performance', methods=['GET'])
+@require_auth
+@require_role('admin', 'analyst', 'viewer')
+def get_ml_performance():
+    """Retorna métricas reales de rendimiento de los modelos XGBoost e Isolation Forest"""
+    _base = Path(__file__).parent.parent / 'training' / 'results'
+
+    xgb_metrics = {}
+    if_metrics = {}
+    xgb_trained_at = None
+    if_trained_at = None
+
+    try:
+        metrics_path = _base / 'metrics.json'
+        if metrics_path.exists():
+            with open(metrics_path, 'r') as f:
+                all_metrics = json.load(f)
+            xgb = all_metrics.get('xgboost', {}).get('metrics', {})
+            xgb_metrics = {
+                'accuracy':  round(xgb.get('accuracy', 0) * 100, 2),
+                'precision': round(xgb.get('precision', 0) * 100, 2),
+                'recall':    round(xgb.get('recall', 0) * 100, 2),
+                'f1_score':  round(xgb.get('f1_score', 0) * 100, 2),
+            }
+    except (OSError, json.JSONDecodeError, KeyError) as e:
+        app.logger.warning(f"Could not load XGBoost metrics: {e}")
+
+    try:
+        if_path = _base / 'isolation_forest_metrics.json'
+        if if_path.exists():
+            with open(if_path, 'r') as f:
+                ifm = json.load(f)
+            if_metrics = {
+                'precision':      round(ifm.get('precision', 0) * 100, 2),
+                'recall':         round(ifm.get('recall', 0) * 100, 2),
+                'f1_score':       round(ifm.get('f1_score', 0) * 100, 2),
+                'precision_at_10': round(ifm.get('precision_at_10', 0) * 100, 2),
+            }
+            if_trained_at = ifm.get('timestamp')
+    except (OSError, json.JSONDecodeError, KeyError) as e:
+        app.logger.warning(f"Could not load Isolation Forest metrics: {e}")
+
+    return jsonify({
+        'xgboost': {
+            'metrics': xgb_metrics,
+            'trained_at': xgb_trained_at,
+            'status': 'active' if xgb_metrics else 'unavailable',
+        },
+        'isolation_forest': {
+            'metrics': if_metrics,
+            'trained_at': if_trained_at,
+            'status': 'active' if if_metrics else 'unavailable',
+        }
+    })
+
+
 @app.route('/api/ml/training-jobs', methods=['GET'])
+@require_auth
+@require_role('admin', 'analyst')
 def list_training_jobs():
     """Lista training jobs"""
     try:
@@ -1776,6 +2287,8 @@ def list_training_jobs():
 
 
 @app.route('/api/ml/endpoints', methods=['GET'])
+@require_auth
+@require_role('admin', 'analyst')
 def list_ml_endpoints():
     """Lista endpoints de inferencia"""
     try:
@@ -1806,6 +2319,8 @@ def list_ml_endpoints():
 
 
 @app.route('/api/ml/predict', methods=['POST'])
+@require_auth
+@require_role('admin', 'analyst')
 def ml_predict():
     """Realiza predicción usando un endpoint de ML"""
     try:
@@ -1841,6 +2356,8 @@ def ml_predict():
 
 
 @app.route('/api/ml/predict/threat', methods=['POST'])
+@require_auth
+@require_role('admin', 'analyst')
 def predict_threat():
     """
     Endpoint especializado para predicción de amenazas.
@@ -1898,6 +2415,8 @@ def predict_threat():
 
 
 @app.route('/api/ml/stats', methods=['GET'])
+@require_auth
+@require_role('admin', 'analyst')
 def ml_stats():
     """Estadísticas del sistema ML"""
     try:
@@ -1980,6 +2499,7 @@ def manual_backup():
 
 @app.route('/api/backup/list', methods=['GET'])
 @require_auth
+@require_role('admin', 'analyst')
 def list_backups():
     """Lista backups disponibles"""
     try:
@@ -2073,4 +2593,5 @@ if __name__ == '__main__':
     print(f"🎯 IP de pruebas autorizadas: {os.getenv('AUTHORIZED_TEST_IP', 'No configurada')}")
     print("\n" + "="*80 + "\n")
     
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    debug_mode = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
+    app.run(debug=debug_mode, host='0.0.0.0', port=5000, threaded=True)

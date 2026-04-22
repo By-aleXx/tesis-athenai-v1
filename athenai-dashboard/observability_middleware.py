@@ -9,6 +9,7 @@ Middleware de Flask que automáticamente:
 
 import time
 import logging
+import threading
 from flask import request, g
 from functools import wraps
 
@@ -63,45 +64,40 @@ class ObservabilityMiddleware:
         # Determinar si es error
         is_error = status_code >= 400
         
-        # Log a CloudWatch
-        if self.cloudwatch_logger:
-            try:
-                log_group = 'errors' if is_error else 'api'
-                level = 'ERROR' if status_code >= 500 else 'WARNING' if is_error else 'INFO'
-                
-                self.cloudwatch_logger.log(
-                    group=log_group,
-                    level=level,
-                    message=f"{method} {path} → {status_code}",
-                    metadata={
-                        'request_id': g.request_id,
-                        'method': method,
-                        'path': path,
-                        'status_code': status_code,
-                        'latency_ms': round(latency_ms, 2),
-                        'source_ip': source_ip,
-                        'user_agent': user_agent
-                    }
-                )
-            except Exception as e:
-                logger.error(f"Error enviando log a CloudWatch: {e}")
-        
-        # Métricas a CloudWatch
-        if self.metrics_collector:
-            try:
-                # Latencia de API
-                self.metrics_collector.record_api_latency(latency_ms, path)
-                
-                # Count de requests
-                self.metrics_collector.record_request_count(1, method)
-                
-                # Errores
-                if is_error:
-                    error_type = f"{status_code}"
-                    self.metrics_collector.record_error(1, error_type)
-            
-            except Exception as e:
-                logger.error(f"Error enviando métricas a CloudWatch: {e}")
+        # Log a CloudWatch y métricas — en hilo separado para no bloquear la respuesta
+        def _send_observability():
+            if self.cloudwatch_logger:
+                try:
+                    log_group = 'errors' if is_error else 'api'
+                    level = 'ERROR' if status_code >= 500 else 'WARNING' if is_error else 'INFO'
+                    self.cloudwatch_logger.log(
+                        group=log_group,
+                        level=level,
+                        message=f"{method} {path} → {status_code}",
+                        metadata={
+                            'request_id': request_id,
+                            'method': method,
+                            'path': path,
+                            'status_code': status_code,
+                            'latency_ms': round(latency_ms, 2),
+                            'source_ip': source_ip,
+                            'user_agent': user_agent
+                        }
+                    )
+                except Exception as e:
+                    logger.debug(f"CloudWatch log omitido: {e}")
+
+            if self.metrics_collector:
+                try:
+                    self.metrics_collector.record_api_latency(latency_ms, path)
+                    self.metrics_collector.record_request_count(1, method)
+                    if is_error:
+                        self.metrics_collector.record_error(1, str(status_code))
+                except Exception as e:
+                    logger.debug(f"Métrica omitida: {e}")
+
+        request_id = getattr(g, 'request_id', '-')
+        threading.Thread(target=_send_observability, daemon=True).start()
         
         return response
     

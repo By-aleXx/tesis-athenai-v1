@@ -6,6 +6,7 @@ Este módulo carga el modelo XGBoost entrenado y proporciona
 predicciones de ataques SQL Injection y XSS.
 """
 
+import logging
 import joblib
 import numpy as np
 import pandas as pd
@@ -15,6 +16,11 @@ import sys
 import hashlib
 import json
 from functools import lru_cache
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+_BASE_DIR = Path(__file__).parent
 
 # Importar FeatureEngineer local
 from feature_engineering import FeatureEngineer
@@ -104,11 +110,14 @@ class AIEngine:
         
         # Cache statistics
         self.cache_stats = {'hits': 0, 'misses': 0}
+
+        # Detection threshold (can be overridden after init via calibration loader)
+        self.threshold = 0.999  # Default: 99.9%
         
         try:
             # Rutas de los modelos
-            model_path = 'models/xgboost.pkl'
-            feature_eng_path = 'models/feature_engineer.pkl'
+            model_path = str(_BASE_DIR / 'models' / 'xgboost.pkl')
+            feature_eng_path = str(_BASE_DIR / 'models' / 'feature_engineer.pkl')
             
             # Verificar que existan los archivos
             if not os.path.exists(model_path):
@@ -319,12 +328,10 @@ class AIEngine:
                 ensemble_prob = malicious_prob
             
             # ========================================
-            # UMBRAL ESTRICTO: Solo malicious si > 99.9%
+            # UMBRAL ESTRICTO: Solo malicious si > threshold
             # ========================================
-            
-            STRICT_THRESHOLD = 0.999  # 99.9%
-            
-            if ensemble_prob > STRICT_THRESHOLD:
+
+            if ensemble_prob > self.threshold:
                 label = 'malicious'
                 confidence = round(ensemble_prob * 100, 2)
             else:

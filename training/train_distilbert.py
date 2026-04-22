@@ -8,15 +8,24 @@ inyecciones SQL y XSS mediante análisis semántico contextual.
 
 import pandas as pd
 import numpy as np
-import torch
-from torch.utils.data import Dataset, DataLoader
-from transformers import (
-    DistilBertTokenizer,
-    DistilBertForSequenceClassification,
-    Trainer,
-    TrainingArguments,
-    EarlyStoppingCallback
-)
+
+try:
+    import torch
+    from torch.utils.data import Dataset, DataLoader
+    from transformers import (
+        DistilBertTokenizer,
+        DistilBertForSequenceClassification,
+        Trainer,
+        TrainingArguments,
+        EarlyStoppingCallback
+    )
+except ImportError as _import_err:
+    print(
+        "ERROR: Dependencias de Deep Learning no encontradas.\n"
+        "Ejecuta: pip install transformers torch\n"
+        f"Detalle: {_import_err}"
+    )
+    exit(1)
 from sklearn.metrics import (
     accuracy_score,
     precision_recall_fscore_support,

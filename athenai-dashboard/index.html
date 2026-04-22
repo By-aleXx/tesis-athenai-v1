@@ -15,7 +15,7 @@
     </script>
 
     <!-- Auth Service (must load first) -->
-    <script src="auth.js"></script>
+    <script src="auth.js" onerror="window._scriptError && window._scriptError('auth.js')"></script>
 
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -112,29 +112,44 @@
 </head>
 
 <body>
-    <!-- Debug Error Handler -->
-    <div id="debug-error-overlay"
-        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,0,0,0.9); z-index:9999; color:white; padding:20px; overflow:auto;">
-        <h2>Frontend Error</h2>
-        <pre id="debug-error-content" style="white-space:pre-wrap;"></pre>
-        <button onclick="document.getElementById('debug-error-overlay').style.display='none'"
-            style="padding:10px; background:white; color:black; border:none; margin-top:20px;">Close</button>
+    <!-- Error overlay — critical script failure or JS crash -->
+    <div id="debug-error-overlay" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.97); z-index:9000; align-items:center; justify-content:center; padding:1rem;">
+        <div style="background:#1e293b; border:1px solid #ef4444; border-radius:12px; padding:2rem; max-width:520px; width:100%; color:#f1f5f9; font-family:system-ui,sans-serif;">
+            <div style="font-size:2rem; margin-bottom:.75rem;">⚠️</div>
+            <h2 style="color:#f87171; margin:0 0 .5rem; font-size:1.2rem; font-weight:600;">Error al cargar el Dashboard</h2>
+            <p style="color:#94a3b8; font-size:.85rem; margin:0 0 1rem;">Un recurso crítico no pudo cargarse. Puede ser un problema de red temporal.</p>
+            <pre id="debug-error-content" style="background:#0f172a; border-radius:8px; padding:.75rem; font-size:.72rem; color:#fca5a5; overflow:auto; max-height:160px; white-space:pre-wrap; margin-bottom:1.25rem;"></pre>
+            <div style="display:flex; gap:.75rem; flex-wrap:wrap;">
+                <button onclick="window.location.reload()" style="flex:1; min-width:120px; padding:.6rem 1rem; background:#4f46e5; color:#fff; border:none; border-radius:8px; cursor:pointer; font-size:.875rem; font-weight:500;">🔄 Reintentar</button>
+                <button onclick="localStorage.removeItem('access_token');localStorage.removeItem('refresh_token');window.location='/login.html'" style="flex:1; min-width:120px; padding:.6rem 1rem; background:#334155; color:#cbd5e1; border:none; border-radius:8px; cursor:pointer; font-size:.875rem;">🔓 Cerrar sesión</button>
+            </div>
+        </div>
     </div>
     <script>
-        window.onerror = function (msg, url, line, col, error) {
-            document.getElementById('debug-error-overlay').style.display = 'block';
-            document.getElementById('debug-error-content').textContent =
-                "Error: " + msg + "\n" +
-                "URL: " + url + "\n" +
-                "Line: " + line + ":" + col + "\n" +
-                "Stack: " + (error ? error.stack : 'N/A');
+        function _showError(msg) {
+            var overlay = document.getElementById('debug-error-overlay');
+            overlay.style.display = 'flex';
+            document.getElementById('debug-error-content').textContent = msg;
+        }
+        window._scriptError = function(name) {
+            _showError('No se pudo cargar el script crítico: ' + name +
+                '\n\nPosibles causas:\n• Problema de red\n• Servidor no disponible\n\nRecarga la página o cierra sesión.');
+        };
+        window.onerror = function(msg, url, line, col, error) {
+            _showError('Error: ' + msg + '\nURL: ' + url + '\nLínea: ' + line + ':' + col +
+                '\n\n' + (error && error.stack ? error.stack : ''));
             return false;
         };
-        window.addEventListener('unhandledrejection', function (event) {
-            document.getElementById('debug-error-overlay').style.display = 'block';
-            document.getElementById('debug-error-content').textContent =
-                "Unhandled Promise Rejection: " + event.reason;
+        window.addEventListener('unhandledrejection', function(event) {
+            _showError('Promise rechazada: ' + (event.reason && event.reason.message ? event.reason.message : event.reason));
         });
+        // Spinner timeout — if dashboard hasn't mounted after 12s, surface an actionable error
+        var _spinnerTimeout = setTimeout(function() {
+            var root = document.getElementById('root');
+            if (root && root.querySelector('.animate-spin')) {
+                _showError('El dashboard tardó demasiado en cargar.\n\nPosibles causas:\n• Un script no se descargó\n• Sesión expirada\n\nIntenta recargar o cerrar sesión.');
+            }
+        }, 12000);
     </script>
     <div id="root">
         <div
@@ -160,17 +175,15 @@
         </div>
     </div>
 
-    <!-- React Development Build (para ver errores completos) -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-
-    <!-- Recharts y PropTypes (mantener originales) -->
-    <script src="assets/js/prop-types.js"></script>
-    <script src="assets/js/recharts.js"></script>
+    <!-- Core libs — all local, no CDN dependency for critical path -->
+    <script src="assets/js/react.js" onerror="window._scriptError('react.js')"></script>
+    <script src="assets/js/react-dom.js" onerror="window._scriptError('react-dom.js')"></script>
+    <script src="assets/js/prop-types.js" onerror="window._scriptError('prop-types.js')"></script>
+    <script src="assets/js/recharts.js" onerror="window._scriptError('recharts.js')"></script>
 
     <!-- Diagnostics Panel (OCULTO - Solo para debugging) -->
-    <div id="diagnostics-panel" style="display:none;"
-        style="position:fixed; top:0; right:0; width:400px; height:300px; background:rgba(0,0,0,0.8); color:#0f0; font-family:monospace; z-index:10000; padding:10px; overflow:auto; font-size:12px;">
+    <div id="diagnostics-panel"
+        style="display:none; position:fixed; top:0; right:0; width:min(400px,90vw); height:min(300px,50vh); background:rgba(0,0,0,0.8); color:#0f0; font-family:monospace; z-index:4000; padding:10px; overflow:auto; font-size:12px;">
         <h3>Environment Diagnostics</h3>
         <div id="diag-content">Initializing...</div>
     </div>
@@ -218,7 +231,7 @@
     </script>
 
     <!-- Babel al final -->
-    <script src="assets/js/babel.js"></script>
+    <script src="assets/js/babel.js" onerror="window._scriptError('babel.js')"></script>
 
     <!-- App Logic -->
     <script type="text/babel">
@@ -292,6 +305,12 @@
                 window.CartesianGrid = Recharts.CartesianGrid;
                 window.Tooltip = Recharts.Tooltip;
                 window.ResponsiveContainer = Recharts.ResponsiveContainer;
+                window.PieChart = Recharts.PieChart;
+                window.Pie = Recharts.Pie;
+                window.Cell = Recharts.Cell;
+                window.Legend = Recharts.Legend;
+                window.LineChart = Recharts.LineChart;
+                window.Line = Recharts.Line;
 
                 console.log('Recharts components assigned to window');
 
@@ -302,7 +321,7 @@
                 }
                 console.log('authService loaded successfully');
 
-                const API_BASE_URL = 'http://localhost:5000/api';
+                const API_BASE_URL = window.location.origin + '/api';
 
                 // --- Components & Icons ---
                 const Icons = {
@@ -322,7 +341,8 @@
                     Cpu: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" /></svg>,
                     Menu: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>,
                     X: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>,
-                    LogOut: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                    LogOut: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>,
+                    Fire: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z" /></svg>
                 };
 
                 const useAPI = (ep, interval = null) => {
@@ -361,7 +381,7 @@
                             <div>
                                 <p className="text-sm font-medium text-slate-600 dark:text-gray-200 dark:text-gray-300 mb-1">{title}</p>
                                 {loading ? <div className="h-8 w-24 bg-slate-100 dark:bg-neutral-900 rounded animate-pulse"></div> : <h3 className={`text-3xl font-bold ${color} mb-1`}>{value}</h3>}
-                                <p className="text-xs text-slate-500 dark:text-gray-300 dark:text-gray-300 dark:text-gray-400 dark:text-gray-300">{sub}</p>
+                                <p className="text-xs text-slate-500 dark:text-gray-400">{sub}</p>
                             </div>
                             <div className={`p-3 rounded-lg ${color.replace('text', 'bg').replace('600', '50')}`}><div className={color}><Icon /></div></div>
                         </div>
@@ -421,6 +441,26 @@
 
                     const [sidebarOpen, setSidebarOpen] = useState(false); // Mobile sidebar state
 
+                    // Role-based access control
+                    const userRole = authService.getUser()?.role || 'viewer';
+                    const isAdmin   = userRole === 'admin';
+                    const isAnalyst = userRole === 'analyst' || isAdmin;
+                    const isViewer  = !isAnalyst;
+
+                    // Toast notifications
+                    const [toasts, setToasts] = useState([]);
+                    const showToast = (msg, type = 'success') => {
+                        const id = Date.now() + Math.random();
+                        setToasts(prev => [...prev, { id, msg, type }]);
+                        setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3500);
+                    };
+
+                    // IP format validator (IPv4 only)
+                    const isValidIP = (ip) => {
+                        const parts = ip.split('.');
+                        return parts.length === 4 && parts.every(p => /^\d{1,3}$/.test(p) && +p >= 0 && +p <= 255);
+                    };
+
 
                     // Aplicar dark mode al html element
                     useEffect(() => {
@@ -432,13 +472,28 @@
                         localStorage.setItem('darkMode', darkMode);
                     }, [darkMode]);
 
+                    // Alerts Center filters and pagination (declared early so alertsApiUrl can use them)
+                    const [filterSeverity, setFilterSeverity] = useState('all');
+                    const [filterAlertType, setFilterAlertType] = useState('all');
+                    const [filterStatus, setFilterStatus] = useState('all');
+                    const [filterAlertIP, setFilterAlertIP] = useState('');
+                    const [alertsPage, setAlertsPage] = useState(1);
+                    const [alertsPerPage] = useState(10);
+                    const [selectedAlert, setSelectedAlert] = useState(null);
+
                     // API hooks
-                    const { data: stats, loading: statsLoading } = useAPI('/stats', 5000);
-                    const { data: traffic } = useAPI('/traffic', 10000);
-                    const { data: attacks } = useAPI('/attacks', 10000);
-                    const { data: alerts, refetch } = useAPI('/alerts', 10000);
-                    const { data: health } = useAPI('/health', 30000);
-                    const { data: systemHealth } = useAPI('/system-health', 5000); // System health metrics
+                    const { data: stats, loading: statsLoading } = useAPI('/stats', 10000);
+                    const { data: traffic } = useAPI('/traffic', 15000);
+                    const { data: attacks } = useAPI('/attacks', 15000);
+                    const alertsApiUrl = (() => {
+                        let url = `/alerts?limit=${alertsPerPage}&offset=${(alertsPage - 1) * alertsPerPage}`;
+                        if (filterSeverity && filterSeverity !== 'all') url += `&severity=${filterSeverity}`;
+                        if (filterStatus && filterStatus !== 'all') url += `&status=${filterStatus}`;
+                        return url;
+                    })();
+                    const { data: alerts, refetch } = useAPI(alertsApiUrl, 10000);
+                    const { data: health } = useAPI('/health', 60000);
+                    const { data: systemHealth } = useAPI('/system-health', 10000);
 
                     // Traffic logs con actualización cada 3 segundos (100 registros)
                     const { data: trafficLogs, refetch: refetchLogs } = useAPI(
@@ -450,10 +505,10 @@
                         })(),
                         3000
                     );
-                    const { data: trafficStats } = useAPI('/traffic-stats', 10000);
+                    const { data: trafficStats } = useAPI('/traffic-stats', 20000);
 
                     // A/B Testing stats
-                    const { data: abStats, refetch: refetchABStats } = useAPI('/ab-testing/stats', 10000);
+                    const { data: abStats, refetch: refetchABStats } = useAPI('/ab-testing/stats', 20000);
                     const [trafficSplit, setTrafficSplit] = useState(90); // Default 90/10 split
 
 
@@ -463,40 +518,52 @@
                     const [showBlockModal, setShowBlockModal] = useState(false);
                     const [showWhitelistModal, setShowWhitelistModal] = useState(false);
 
-                    // Alerts Center filters
-                    const [filterSeverity, setFilterSeverity] = useState('all');
-                    const [filterAlertType, setFilterAlertType] = useState('all');
-                    const [filterStatus, setFilterStatus] = useState('all');
-                    const [filterAlertIP, setFilterAlertIP] = useState('');
+                    // ML Training Logs modal
+                    const [showTrainingLogsModal, setShowTrainingLogsModal] = useState(false);
+                    const [trainingJobs, setTrainingJobs] = useState([]);
+                    const [trainingJobsLoading, setTrainingJobsLoading] = useState(false);
 
-                    // Alerts pagination and detail modal
-                    const [alertsPage, setAlertsPage] = useState(1);
-                    const [alertsPerPage] = useState(10);
-                    const [selectedAlert, setSelectedAlert] = useState(null);
+                    const fetchTrainingLogs = React.useCallback(async () => {
+                        setTrainingJobsLoading(true);
+                        try {
+                            const res = await authService.fetch(`${API_BASE_URL}/ml/training-jobs`);
+                            const data = await res.json();
+                            setTrainingJobs(data.training_jobs || []);
+                        } catch (e) {
+                            console.warn('Training jobs fetch error:', e.message);
+                        } finally {
+                            setTrainingJobsLoading(false);
+                        }
+                    }, []);
 
                     // API hooks for IP management
-                    const { data: blockedIPs, refetch: refetchBlockedIPs } = useAPI('/blocked-ips', 10000);
-                    const { data: whitelist, refetch: refetchWhitelist } = useAPI('/whitelist', 10000);
-                    const { data: ipStats } = useAPI('/ip-stats', 10000);
+                    const { data: blockedIPs, refetch: refetchBlockedIPs } = useAPI('/blocked-ips', 15000);
+                    const { data: whitelist, refetch: refetchWhitelist } = useAPI('/whitelist', 15000);
+                    const { data: ipStats } = useAPI('/ip-stats', 20000);
+
+                    // API hook for threat dashboard
+                    const { data: threatSummary, refetch: refetchThreats } = useAPI('/threats/summary', 15000);
 
                     // API hook for continuous learning stats
-                    const { data: clStats, refetch: refetchCLStats } = useAPI('/continuous-learning/stats', 10000);
+                    const { data: clStats, refetch: refetchCLStats } = useAPI('/continuous-learning/stats', 30000);
 
-                    // Filter alerts based on severity, type, status and IP
-                    const filteredAlerts = alerts?.filter(alert => {
-                        const matchesSeverity = filterSeverity === 'all' || (alert.severity || 'medium').toLowerCase() === filterSeverity.toLowerCase();
+                    // API hook for real ML model performance metrics
+                    const { data: mlPerf } = useAPI('/ml/performance', 60000);
+
+                    // Unwrap envelope from new API format; fall back to bare array for backwards compat
+                    const alertsList = (alerts?.alerts || (Array.isArray(alerts) ? alerts : []));
+                    const alertsTotal = alerts?.total ?? alertsList.length;
+
+                    // Filter alerts: severity/status are server-side; type and IP remain client-side
+                    const filteredAlerts = alertsList.filter(alert => {
                         const matchesType = filterAlertType === 'all' || (alert.type || '').toLowerCase().includes(filterAlertType.toLowerCase());
-                        const matchesStatus = filterStatus === 'all' || (alert.status || '').toLowerCase() === filterStatus.toLowerCase();
                         const matchesIP = filterAlertIP === '' || (alert.ip || '').toLowerCase().includes(filterAlertIP.toLowerCase());
-                        return matchesSeverity && matchesType && matchesStatus && matchesIP;
-                    }) || [];
+                        return matchesType && matchesIP;
+                    });
 
-                    // Pagination logic for alerts
-                    const totalAlertsPages = Math.ceil(filteredAlerts.length / alertsPerPage);
-                    const currentAlerts = filteredAlerts.slice(
-                        (alertsPage - 1) * alertsPerPage,
-                        alertsPage * alertsPerPage
-                    );
+                    // Pagination: server handles offset/limit; show page count based on server total
+                    const totalAlertsPages = Math.max(1, Math.ceil(alertsTotal / alertsPerPage));
+                    const currentAlerts = filteredAlerts;
 
                     // Reset page to 1 when filters change
                     React.useEffect(() => {
@@ -505,58 +572,55 @@
 
                     // Filter blocked IPs based on search and filter
                     const filteredBlockedIPs = blockedIPs?.blocked_ips?.filter(ip => {
-                        const matchesSearch = ip.ip.toLowerCase().includes(ipSearchQuery.toLowerCase());
+                        const matchesSearch = ip.ip.toLowerCase().includes(ipSearchQuery.toLowerCase()) ||
+                            (ip.reason || '').toLowerCase().includes(ipSearchQuery.toLowerCase());
+                        const threatMatch = ip.reason?.match(/^\[([^\]]+)\]/);
+                        const threatType = threatMatch ? threatMatch[1] : '';
                         const matchesFilter =
                             ipFilterType === 'all' ? true :
                                 ipFilterType === 'auto' ? ip.auto_blocked :
                                     ipFilterType === 'manual' ? !ip.auto_blocked :
-                                        ipFilterType === 'permanent' ? ip.permanent : true;
+                                        ipFilterType === 'permanent' ? ip.permanent :
+                                            ipFilterType === 'sql' ? threatType === 'SQL Injection' :
+                                                ipFilterType === 'xss' ? threatType === 'XSS' :
+                                                    ipFilterType === 'cmd' ? threatType === 'Command Injection' :
+                                                        ipFilterType === 'stuffing' ? threatType === 'Credential Stuffing' :
+                                                            ipFilterType === 'travel' ? threatType === 'Impossible Travel' : true;
                         return matchesSearch && matchesFilter;
                     }) || [];
 
                     // Unblock IP handler
                     const handleUnblockIP = async (ip) => {
-                        if (!confirm(`Are you sure you want to unblock ${ip}?`)) return;
-
                         try {
-                            const res = await authService.fetch(`${API_BASE_URL}/blocked-ips/${ip}`, {
-                                method: 'DELETE'
-                            });
-
+                            const res = await authService.fetch(`${API_BASE_URL}/blocked-ips/${ip}`, { method: 'DELETE' });
                             if (res.ok) {
-                                alert(`IP ${ip} unblocked successfully`);
+                                showToast(`IP ${ip} desbloqueada`);
                                 refetchBlockedIPs();
                             } else {
-                                alert('Failed to unblock IP');
+                                showToast(`Error al desbloquear ${ip}`, 'error');
                             }
                         } catch (e) {
-                            console.error('Error unblocking IP:', e);
-                            alert('Error unblocking IP');
+                            showToast('Error de red: ' + e.message, 'error');
                         }
                     };
 
                     // Remove from whitelist handler
                     const handleRemoveFromWhitelist = async (ip) => {
-                        if (!confirm(`Are you sure you want to remove ${ip} from whitelist?`)) return;
-
                         try {
-                            const res = await authService.fetch(`${API_BASE_URL}/whitelist/${ip}`, {
-                                method: 'DELETE'
-                            });
-
+                            const res = await authService.fetch(`${API_BASE_URL}/whitelist/${ip}`, { method: 'DELETE' });
                             if (res.ok) {
-                                alert(`IP ${ip} removed from whitelist`);
+                                showToast(`IP ${ip} eliminada de la whitelist`);
                                 refetchWhitelist();
                             } else {
-                                alert('Failed to remove IP from whitelist');
+                                showToast(`Error al eliminar ${ip} de whitelist`, 'error');
                             }
                         } catch (e) {
-                            console.error('Error removing from whitelist:', e);
-                            alert('Error removing from whitelist');
+                            showToast('Error de red: ' + e.message, 'error');
                         }
                     };
 
                     return (
+                        <>
                         <div className="flex min-h-screen bg-slate-50 dark:bg-neutral-900 dark:bg-black font-sans">
                             {/* Mobile Hamburger Button */}
                             <button
@@ -591,15 +655,21 @@
                                     <div className="text-white"><Icons.Shield /></div>
                                 </div>
                                 <div className="flex flex-col space-y-4 w-full px-4">
-                                    {['dashboard', 'alerts', 'traffic-logs', 'analytics', 'ip-management', 'ab-testing', 'ml-status'].map(id => (
+                                    {[
+                                        'dashboard', 'threats', 'alerts', 'traffic-logs', 'analytics',
+                                        'ip-management',
+                                        ...(isAnalyst ? ['ab-testing'] : []),
+                                        'ml-status',
+                                    ].map(id => (
                                         <button
                                             key={id}
                                             onClick={() => { setTab(id); setSidebarOpen(false); }}
+                                            title={id.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
                                             className={`p-3 rounded-xl transition-all hover-lift min-h-[44px] flex items-center justify-center lg:justify-center ${tab === id ? 'bg-indigo-50 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-gray-400 hover:text-slate-600 dark:text-gray-200 dark:hover:text-slate-300'}`}
                                         >
                                             <span className="flex items-center gap-3">
-                                                {id === 'dashboard' ? <Icons.Activity /> : id === 'alerts' ? <Icons.Bell /> : id === 'traffic-logs' ? <Icons.Database /> : id === 'analytics' ? <Icons.Chart /> : id === 'ip-management' ? <Icons.Shield /> : id === 'ab-testing' ? <Icons.GitBranch /> : <Icons.Cpu />}
-                                                <span className="lg:hidden text-sm font-medium capitalize">{id.replace('-', ' ')}</span>
+                                                {id === 'dashboard' ? <Icons.Activity /> : id === 'threats' ? <Icons.Fire /> : id === 'alerts' ? <Icons.Bell /> : id === 'traffic-logs' ? <Icons.Database /> : id === 'analytics' ? <Icons.Chart /> : id === 'ip-management' ? <Icons.Shield /> : id === 'ab-testing' ? <Icons.GitBranch /> : <Icons.Cpu />}
+                                                <span className="lg:hidden text-sm font-medium capitalize">{{ dashboard: 'Panel', threats: 'Amenazas', alerts: 'Alertas', 'traffic-logs': 'Logs Tráfico', analytics: 'Analítica', 'ip-management': 'Gestión IPs', 'ab-testing': 'A/B Testing', 'ml-status': 'Estado ML' }[id] || id}</span>
                                             </span>
                                         </button>
                                     ))}
@@ -610,7 +680,7 @@
                                 <div className="bg-white dark:bg-black border-b border-slate-200 dark:border-neutral-700 dark:border-neutral-800 px-4 sm:px-6 lg:px-8 py-4 sm:py-6 sticky top-0 z-10 bg-opacity-90 backdrop-blur-sm flex justify-between items-center">
                                     <div className="flex items-center gap-4">
                                         <div className="lg:hidden w-12"></div> {/* Spacer for hamburger */}
-                                        <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-slate-800 dark:text-white">AthenAI Dashboard</h1>
+                                        <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-slate-800 dark:text-white">{{ dashboard: 'Panel Principal', threats: 'Amenazas Detectadas', alerts: 'Alertas de Seguridad', 'traffic-logs': 'Logs de Tráfico', analytics: 'Analítica', 'ip-management': 'Gestión de IPs', 'ab-testing': 'A/B Testing', 'ml-status': 'Estado del ML' }[tab] || 'AthenAI Dashboard'}</h1>
                                     </div>
                                     <div className="flex items-center space-x-2 sm:space-x-4">
                                         {/* User Profile */}
@@ -634,7 +704,7 @@
                                             className="px-3 sm:px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors flex items-center space-x-2 min-h-[44px]"
                                         >
                                             <Icons.LogOut />
-                                            <span className="hidden sm:inline">Logout</span>
+                                            <span className="hidden sm:inline">Cerrar sesión</span>
                                         </button>
 
                                         {/* Dark Mode Toggle */}
@@ -657,7 +727,7 @@
                                 <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 lg:space-y-8 animate-fade-in">
                                     {tab === 'dashboard' && (
                                         <>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                                                 <KPICard title="Amenazas Hoy" value={stats?.threats_today || 0} sub={stats ? `+${stats.threats_change.toFixed(1)}%` : '...'} icon={Icons.Alert} color="text-red-600" loading={statsLoading} />
                                                 <KPICard title="Precisión" value={`${stats?.model_precision || 0}%`} sub="XGBoost + IF" icon={Icons.Shield} color="text-green-600" loading={statsLoading} />
                                                 <KPICard title="Latencia" value={`${stats?.avg_latency || 0}ms`} sub="Avg 24h" icon={Icons.Zap} color="text-indigo-600" loading={statsLoading} />
@@ -666,7 +736,7 @@
 
                                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                                 <div className="bg-white dark:bg-black rounded-xl p-6 shadow-sm border border-slate-200 dark:border-neutral-700 dark:border-neutral-800 hover-lift h-96">
-                                                    <h3 className="font-semibold text-slate-800 dark:text-white dark:text-white mb-4">Tráfico Live</h3>
+                                                    <h3 className="font-semibold text-slate-800 dark:text-white mb-4">Tráfico Live</h3>
                                                     {traffic && AreaChart ? (
                                                         <ResponsiveContainer width="100%" height="100%">
                                                             <AreaChart data={traffic}>
@@ -689,7 +759,7 @@
                                                             <BarChart data={attacks}>
                                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                                                                 <XAxis dataKey="type" axisLine={false} tickLine={false} tick={{ fontSize: 12 }} />
-                                                                <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '8px', border: 'none' }} />
+                                                                <Tooltip cursor={{ fill: 'rgba(0,0,0,0.05)' }} contentStyle={{ borderRadius: '8px', border: 'none', backgroundColor: '#1e293b', color: '#f1f5f9', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.4)' }} itemStyle={{ color: '#94a3b8' }} labelStyle={{ color: '#f1f5f9', fontWeight: 600 }} />
                                                                 <Bar dataKey="count" fill="#4f46e5" radius={[4, 4, 0, 0]} barSize={40} />
                                                             </BarChart>
                                                         </ResponsiveContainer>
@@ -700,16 +770,24 @@
                                             <div className="bg-white dark:bg-black rounded-xl shadow-sm border border-slate-200 dark:border-neutral-700 dark:border-neutral-800 overflow-hidden">
                                                 <div className="p-6 border-b border-slate-200 dark:border-neutral-700 dark:border-neutral-800 flex justify-between items-center">
                                                     <div>
-                                                        <h3 className="font-semibold text-slate-800 dark:text-white dark:text-white">Alertas Recientes</h3>
-                                                        <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">Mostrando {alerts?.length || 0} registros</p>
+                                                        <h3 className="font-semibold text-slate-800 dark:text-white">Alertas Recientes</h3>
+                                                        <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">Mostrando {alertsList?.length || 0} registros</p>
                                                     </div>
                                                     <button onClick={() => refetch()} className="p-2 hover:bg-slate-100 dark:hover:bg-neutral-800 rounded"><Icons.Refresh /></button>
                                                 </div>
-                                                <div className="overflow-x-auto overflow-y-auto h-96">
+                                                <div className="overflow-x-auto overflow-y-auto max-h-[60vh]">
                                                     <table className="w-full min-w-[480px] text-sm text-left">
                                                         <thead className="bg-slate-50 dark:bg-neutral-900 text-slate-600 dark:text-gray-200 dark:text-white uppercase text-xs"><tr><th className="px-4 sm:px-6 py-3">Hora</th><th className="px-4 sm:px-6 py-3">Tipo</th><th className="px-4 sm:px-6 py-3">IP</th><th className="px-4 sm:px-6 py-3">Estado</th></tr></thead>
                                                         <tbody className="divide-y divide-slate-200 dark:divide-neutral-800">
-                                                            {alerts?.map((a, i) => (
+                                                            {(!alertsList || alertsList.length === 0) ? (
+                                                                <tr><td colSpan={4} className="px-6 py-10 text-center">
+                                                                    <div className="flex flex-col items-center gap-2 text-slate-400 dark:text-gray-500">
+                                                                        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                                                                        <p className="text-sm font-medium">Sin alertas recientes</p>
+                                                                        <p className="text-xs">El sistema no ha detectado actividad sospechosa</p>
+                                                                    </div>
+                                                                </td></tr>
+                                                            ) : alertsList.map((a, i) => (
                                                                 <tr key={i} className="bg-white hover:bg-slate-50 dark:bg-neutral-900 dark:hover:bg-neutral-800">
                                                                     <td className="px-4 sm:px-6 py-3 sm:py-4 text-slate-600 dark:text-gray-200 whitespace-nowrap">{a.time}</td>
                                                                     <td className="px-4 sm:px-6 py-3 sm:py-4 font-medium whitespace-nowrap">{a.type}</td>
@@ -737,7 +815,7 @@
 
                                                 <div className="p-6">
                                                     {/* OS Metrics */}
-                                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-6">
                                                         {/* CPU */}
                                                         <div className="bg-slate-50 dark:bg-neutral-900 rounded-lg p-4">
                                                             <div className="flex justify-between items-center mb-2">
@@ -830,7 +908,7 @@
                                                     </div>
 
                                                     {/* Services Status */}
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                                                         {/* Redis */}
                                                         <div className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 rounded-lg p-4 border border-red-200 dark:border-red-800">
                                                             <div className="flex items-center justify-between mb-3">
@@ -915,6 +993,183 @@
                                             </div>
                                         </>
                                     )}
+                                    {tab === 'threats' && (() => {
+                                        const THREAT_COLORS = {
+                                            'SQL Injection':      '#f97316',
+                                            'XSS':                '#ec4899',
+                                            'Command Injection':  '#ef4444',
+                                            'Credential Stuffing':'#eab308',
+                                            'Impossible Travel':  '#a855f7',
+                                            'ML Async Detection': '#3b82f6',
+                                            'Unknown':            '#94a3b8',
+                                        };
+                                        const breakdown = threatSummary?.breakdown || [];
+                                        const timeline  = threatSummary?.timeline  || [];
+                                        const recent    = threatSummary?.recent_threats || [];
+                                        const topIPs    = threatSummary?.top_ips   || [];
+                                        const mostCommon = threatSummary?.most_common_threat || '—';
+                                        const totalAuto  = threatSummary?.total_auto_blocked || 0;
+
+                                        // TTL helper
+                                        const fmtTTL = (sec) => {
+                                            if (sec == null) return '—';
+                                            if (sec < 0)   return 'Perm';
+                                            if (sec >= 3600) return `${Math.floor(sec/3600)}h`;
+                                            return `${Math.floor(sec/60)}m`;
+                                        };
+
+                                        return (
+                                        <>
+                                            {/* Header */}
+                                            <div className="flex items-center justify-between mb-6">
+                                                <div>
+                                                    <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Threat Dashboard</h2>
+                                                    <p className="text-sm text-slate-500 dark:text-gray-400 mt-1">Detecciones automáticas en tiempo real</p>
+                                                </div>
+                                                <button onClick={refetchThreats} className="p-2 hover:bg-slate-100 dark:hover:bg-neutral-800 rounded-lg transition-colors text-slate-500 dark:text-gray-400">
+                                                    <Icons.Refresh />
+                                                </button>
+                                            </div>
+
+                                            {/* KPI row */}
+                                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                                                <div className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 rounded-xl p-5 border border-red-200 dark:border-red-800">
+                                                    <p className="text-xs font-medium text-red-900 dark:text-red-200 mb-1">Total Auto-Bloqueadas</p>
+                                                    <h3 className="text-3xl font-bold text-red-700 dark:text-red-300">{totalAuto}</h3>
+                                                    <p className="text-xs text-red-500 dark:text-red-400 mt-1">Activas en Redis</p>
+                                                </div>
+                                                <div className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 rounded-xl p-5 border border-orange-200 dark:border-orange-800">
+                                                    <p className="text-xs font-medium text-orange-900 dark:text-orange-200 mb-1">Amenaza + Común</p>
+                                                    <h3 className="text-lg font-bold text-orange-700 dark:text-orange-300 leading-tight mt-1">{mostCommon}</h3>
+                                                    <p className="text-xs text-orange-500 dark:text-orange-400 mt-1">{breakdown[0]?.value || 0} bloqueos</p>
+                                                </div>
+                                                <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-xl p-5 border border-purple-200 dark:border-purple-800">
+                                                    <p className="text-xs font-medium text-purple-900 dark:text-purple-200 mb-1">Tipos Detectados</p>
+                                                    <h3 className="text-3xl font-bold text-purple-700 dark:text-purple-300">{breakdown.length}</h3>
+                                                    <p className="text-xs text-purple-500 dark:text-purple-400 mt-1">Categorías distintas</p>
+                                                </div>
+                                                <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl p-5 border border-blue-200 dark:border-blue-800">
+                                                    <p className="text-xs font-medium text-blue-900 dark:text-blue-200 mb-1">IPs Únicas</p>
+                                                    <h3 className="text-3xl font-bold text-blue-700 dark:text-blue-300">{topIPs.length}</h3>
+                                                    <p className="text-xs text-blue-500 dark:text-blue-400 mt-1">Con bloqueo activo</p>
+                                                </div>
+                                            </div>
+
+                                            {/* Charts row */}
+                                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                                                {/* Donut chart */}
+                                                <div className="bg-white dark:bg-black rounded-xl p-6 border border-slate-200 dark:border-neutral-700 shadow-sm">
+                                                    <h3 className="font-semibold text-slate-800 dark:text-white mb-4">Distribución por Tipo</h3>
+                                                    {breakdown.length > 0 && PieChart ? (
+                                                        <ResponsiveContainer width="100%" height={260}>
+                                                            <PieChart>
+                                                                <Pie data={breakdown} cx="50%" cy="50%" innerRadius={65} outerRadius={100}
+                                                                    dataKey="value" nameKey="name" paddingAngle={3}>
+                                                                    {breakdown.map((entry, idx) => (
+                                                                        <Cell key={idx} fill={THREAT_COLORS[entry.name] || '#94a3b8'} />
+                                                                    ))}
+                                                                </Pie>
+                                                                <Tooltip contentStyle={{ backgroundColor: '#1e293b', color: '#f1f5f9', border: 'none', borderRadius: '8px' }} itemStyle={{ color: '#94a3b8' }} labelStyle={{ color: '#f1f5f9', fontWeight: 600 }} />
+                                                                <Legend formatter={(value) => <span style={{ color: '#94a3b8', fontSize: 12 }}>{value}</span>} />
+                                                            </PieChart>
+                                                        </ResponsiveContainer>
+                                                    ) : (
+                                                        <div className="h-64 flex items-center justify-center text-slate-400 dark:text-gray-500 text-sm">
+                                                            {breakdown.length === 0 ? 'Sin bloqueos automáticos activos' : 'Cargando...'}
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Stacked timeline */}
+                                                <div className="bg-white dark:bg-black rounded-xl p-6 border border-slate-200 dark:border-neutral-700 shadow-sm">
+                                                    <h3 className="font-semibold text-slate-800 dark:text-white mb-4">Timeline — Últimas 24h</h3>
+                                                    {timeline.length > 0 && BarChart ? (
+                                                        <ResponsiveContainer width="100%" height={260}>
+                                                            <BarChart data={timeline} margin={{ top: 0, right: 0, bottom: 0, left: -20 }}>
+                                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f900" />
+                                                                <XAxis dataKey="time" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} interval={3} />
+                                                                <YAxis tick={{ fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                                                                <Tooltip contentStyle={{ backgroundColor: '#1e293b', color: '#f1f5f9', border: 'none', borderRadius: '8px' }} itemStyle={{ color: '#94a3b8' }} labelStyle={{ color: '#f1f5f9', fontWeight: 600 }} />
+                                                                {Object.entries(THREAT_COLORS).slice(0, 6).map(([name, color]) => (
+                                                                    <Bar key={name} dataKey={name} stackId="a" fill={color} radius={[0,0,0,0]} />
+                                                                ))}
+                                                            </BarChart>
+                                                        </ResponsiveContainer>
+                                                    ) : (
+                                                        <div className="h-64 flex items-center justify-center text-slate-400 dark:text-gray-500 text-sm">Sin datos en las últimas 24h</div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Bottom row: Recent feed + Top IPs */}
+                                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                                {/* Recent threats feed */}
+                                                <div className="lg:col-span-2 bg-white dark:bg-black rounded-xl border border-slate-200 dark:border-neutral-700 shadow-sm overflow-hidden">
+                                                    <div className="p-5 border-b border-slate-200 dark:border-neutral-700 flex justify-between items-center">
+                                                        <div>
+                                                            <h3 className="font-semibold text-slate-800 dark:text-white">Bloqueos Recientes</h3>
+                                                            <p className="text-xs text-slate-500 dark:text-gray-400 mt-0.5">Últimos {recent.length} detectados automáticamente</p>
+                                                        </div>
+                                                        <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                                                    </div>
+                                                    <div className="overflow-x-auto">
+                                                        <table className="w-full min-w-[520px] text-sm text-left">
+                                                            <thead className="bg-slate-50 dark:bg-neutral-900 text-slate-500 dark:text-gray-400 uppercase text-xs">
+                                                                <tr>
+                                                                    <th className="px-4 py-3">IP</th>
+                                                                    <th className="px-4 py-3">Threat</th>
+                                                                    <th className="px-4 py-3">Reason</th>
+                                                                    <th className="px-4 py-3">TTL</th>
+                                                                    <th className="px-4 py-3">Cuando</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="divide-y divide-slate-100 dark:divide-neutral-800">
+                                                                {recent.map((t, i) => (
+                                                                    <tr key={i} className="bg-white hover:bg-slate-50 dark:bg-neutral-900 dark:hover:bg-neutral-800">
+                                                                        <td className="px-4 py-3 font-mono text-slate-800 dark:text-white text-xs">{t.ip}</td>
+                                                                        <td className="px-4 py-3">
+                                                                            <span className="px-2 py-0.5 rounded-full text-xs font-medium"
+                                                                                style={{ backgroundColor: (THREAT_COLORS[t.threat_type] || '#94a3b8') + '22', color: THREAT_COLORS[t.threat_type] || '#94a3b8' }}>
+                                                                                {t.threat_type}
+                                                                            </span>
+                                                                        </td>
+                                                                        <td className="px-4 py-3 text-slate-500 dark:text-gray-400 text-xs max-w-[200px] truncate" title={t.reason}>{t.reason}</td>
+                                                                        <td className="px-4 py-3 text-slate-500 dark:text-gray-400 text-xs">{fmtTTL(t.remaining_seconds)}</td>
+                                                                        <td className="px-4 py-3 text-slate-400 dark:text-gray-500 text-xs whitespace-nowrap">{new Date(t.blocked_at).toLocaleTimeString()}</td>
+                                                                    </tr>
+                                                                ))}
+                                                                {recent.length === 0 && (
+                                                                    <tr><td colSpan="5" className="px-4 py-8 text-center text-slate-400 dark:text-gray-500">Sin bloqueos automáticos activos</td></tr>
+                                                                )}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+
+                                                {/* Top offending IPs */}
+                                                <div className="bg-white dark:bg-black rounded-xl border border-slate-200 dark:border-neutral-700 shadow-sm overflow-hidden">
+                                                    <div className="p-5 border-b border-slate-200 dark:border-neutral-700">
+                                                        <h3 className="font-semibold text-slate-800 dark:text-white">Top IPs Ofensoras</h3>
+                                                        <p className="text-xs text-slate-500 dark:text-gray-400 mt-0.5">Con bloqueo activo</p>
+                                                    </div>
+                                                    <div className="p-4 space-y-3">
+                                                        {topIPs.map((entry, i) => (
+                                                            <div key={i} className="flex items-center gap-3">
+                                                                <span className="text-xs font-bold text-slate-400 dark:text-gray-500 w-4">{i+1}</span>
+                                                                <span className="font-mono text-sm text-slate-700 dark:text-gray-200 flex-1 truncate">{entry.ip}</span>
+                                                                <span className="px-2 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-full text-xs font-semibold">{entry.count}</span>
+                                                            </div>
+                                                        ))}
+                                                        {topIPs.length === 0 && (
+                                                            <p className="text-center text-slate-400 dark:text-gray-500 text-sm py-6">Sin datos</p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </>
+                                        );
+                                    })()}
+
                                     {tab === 'alerts' && (
                                         <>
                                             <div className="bg-white dark:bg-black rounded-xl shadow-sm border border-slate-200 dark:border-neutral-700 p-6 mb-6">
@@ -928,9 +1183,10 @@
                                                             className="w-full px-3 py-2 border border-slate-300 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                                                         >
                                                             <option value="all">Todas</option>
-                                                            <option value="high">High</option>
-                                                            <option value="medium">Medium</option>
-                                                            <option value="low">Low</option>
+                                                            <option value="critical">Crítica</option>
+                                                            <option value="high">Alto</option>
+                                                            <option value="medium">Medio</option>
+                                                            <option value="low">Bajo</option>
                                                         </select>
                                                     </div>
                                                     <div>
@@ -978,7 +1234,7 @@
                                                     <div>
                                                         <h3 className="font-semibold text-slate-800 dark:text-white">Todas las Alertas</h3>
                                                         <p className="text-sm text-slate-500 dark:text-gray-300 dark:text-gray-400 mt-1">
-                                                            {filteredAlerts?.length || 0} de {alerts?.length || 0} alertas mostradas
+                                                            {filteredAlerts?.length || 0} de {alertsTotal || 0} alertas mostradas
                                                         </p>
                                                     </div>
                                                     <button onClick={() => refetch()} className="flex items-center space-x-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors">
@@ -1002,7 +1258,7 @@
                                                         <tbody className="divide-y divide-slate-200 dark:divide-neutral-800">
                                                             {currentAlerts?.length > 0 ? currentAlerts.map((a, i) => (
                                                                 <tr key={i} className="bg-white hover:bg-slate-50 dark:bg-neutral-900 dark:hover:bg-neutral-800 transition-colors">
-                                                                    <td className="px-6 py-4 font-mono text-xs text-slate-500 dark:text-gray-300 dark:text-gray-300 dark:text-gray-400">{a.id || `#${i + 1}`}</td>
+                                                                    <td className="px-6 py-4 font-mono text-xs text-slate-500 dark:text-gray-400">{a.id || `#${i + 1}`}</td>
                                                                     <td className="px-6 py-4 text-slate-600 dark:text-gray-200">{a.time}</td>
                                                                     <td className="px-6 py-4">
                                                                         <span className="font-medium text-slate-800 dark:text-white">{a.type}</span>
@@ -1015,7 +1271,7 @@
                                                                             {a.severity || 'medium'}
                                                                         </span>
                                                                     </td>
-                                                                    <td className="px-6 py-4 font-mono text-slate-600 dark:text-gray-200 dark:text-gray-200">{a.ip}</td>
+                                                                    <td className="px-6 py-4 font-mono text-slate-600 dark:text-gray-200">{a.ip}</td>
                                                                     <td className="px-6 py-4">
                                                                         <span className={`px-3 py-1 rounded-full text-xs font-medium ${a.status === 'blocked' ? 'bg-red-100 text-red-700' :
                                                                             a.status === 'monitoring' ? 'bg-blue-100 text-blue-700' :
@@ -1206,7 +1462,7 @@
                                                 </div>
                                             </div>
 
-                                            <div className="bg-white dark:bg-black rounded-xl shadow-sm border border-slate-200 dark:border-neutral-700 p-6 mb-6" style={{ display: 'none' }}>
+                                            <div className="bg-white dark:bg-black rounded-xl shadow-sm border border-slate-200 dark:border-neutral-700 p-6 mb-6">
                                                 <div className="flex justify-between items-center mb-4">
                                                     <h2 className="text-xl font-bold text-slate-800 dark:text-white">Logs de Tráfico HTTP</h2>
                                                     <div className="flex items-center space-x-4">
@@ -1232,25 +1488,52 @@
                                                             <Icons.Refresh />
                                                             <span className="text-sm font-medium">Actualizar</span>
                                                         </button>
+                                                        {isAnalyst && (() => {
+                                                            const exportLogs = async (fmt) => {
+                                                                try {
+                                                                    const resp = await authService.fetch(`/api/traffic-logs/export?format=${fmt}&limit=500`);
+                                                                    if (!resp.ok) { alert('Export failed'); return; }
+                                                                    const blob = await resp.blob();
+                                                                    const url = URL.createObjectURL(blob);
+                                                                    const a = document.createElement('a');
+                                                                    a.href = url;
+                                                                    a.download = `traffic_logs_${Date.now()}.${fmt}`;
+                                                                    a.click();
+                                                                    URL.revokeObjectURL(url);
+                                                                } catch (err) {
+                                                                    alert('Export failed: ' + err.message);
+                                                                }
+                                                            };
+                                                            return (
+                                                                <div className="flex items-center space-x-2">
+                                                                    <button onClick={() => exportLogs('csv')} className="flex items-center space-x-2 px-4 py-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-colors">
+                                                                        <span className="text-sm font-medium">Export CSV</span>
+                                                                    </button>
+                                                                    <button onClick={() => exportLogs('json')} className="flex items-center space-x-2 px-4 py-2 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-100 transition-colors">
+                                                                        <span className="text-sm font-medium">Export JSON</span>
+                                                                    </button>
+                                                                </div>
+                                                            );
+                                                        })()}
                                                     </div>
                                                 </div>
-                                                <p className="text-sm text-slate-500 dark:text-gray-300 dark:text-gray-400">Actualización automática cada 5 segundos • IP autorizada: 100.108.127.116</p>
+                                                <p className="text-sm text-slate-500 dark:text-gray-300 dark:text-gray-400">Actualización automática cada 5 segundos</p>
                                             </div>
 
                                             <div className="bg-white rounded-xl shadow-sm border border-slate-200 dark:border-neutral-700 overflow-hidden">
 
                                                 {/* Tabla con Scroll Vertical y Horizontal */}
-                                                <div className="overflow-auto h-[600px] border border-slate-200 dark:border-neutral-700 rounded-lg">
+                                                <div className="overflow-auto max-h-[60vh] border border-slate-200 dark:border-neutral-700 rounded-lg">
                                                     <table className="w-full text-sm table-fixed">
                                                         <thead className="sticky top-0 bg-slate-50 dark:bg-neutral-900 text-slate-600 dark:text-gray-200 uppercase text-xs z-10 shadow-sm">
                                                             <tr>
-                                                                <th className="px-3 py-4 text-left w-[120px]">Tipo</th>
-                                                                <th className="px-3 py-4 text-left w-[130px]">Timestamp</th>
-                                                                <th className="px-3 py-4 text-left w-[70px]">Método</th>
+                                                                <th className="px-3 py-4 text-left min-w-[90px] sm:w-[120px]">Tipo</th>
+                                                                <th className="px-3 py-4 text-left hidden sm:table-cell sm:w-[130px]">Timestamp</th>
+                                                                <th className="px-3 py-4 text-left hidden md:table-cell md:w-[70px]">Método</th>
                                                                 <th className="px-3 py-4 text-left">Path</th>
-                                                                <th className="px-3 py-4 text-left w-[110px]">IP Origen</th>
-                                                                <th className="px-3 py-4 text-left w-[180px]">User Agent</th>
-                                                                <th className="px-3 py-4 text-left w-[90px]">Acciones</th>
+                                                                <th className="px-3 py-4 text-left hidden sm:table-cell sm:w-[110px]">IP Origen</th>
+                                                                <th className="px-3 py-4 text-left hidden lg:table-cell lg:w-[180px]">User Agent</th>
+                                                                <th className="px-3 py-4 text-left min-w-[70px] sm:w-[90px]">Acciones</th>
                                                             </tr>
                                                         </thead>
                                                         <tbody className="divide-y divide-slate-200 dark:divide-neutral-800 bg-white dark:bg-neutral-900">
@@ -1279,10 +1562,10 @@
                                                                             </div>
                                                                         )}
                                                                     </td>
-                                                                    <td className="px-6 py-4 text-slate-800 dark:text-gray-200 font-mono text-xs font-medium">
+                                                                    <td className="px-6 py-4 text-slate-800 dark:text-gray-200 font-mono text-xs font-medium hidden sm:table-cell">
                                                                         {log.timestamp ? new Date(log.timestamp).toLocaleString('es-MX') : 'N/A'}
                                                                     </td>
-                                                                    <td className="px-6 py-4">
+                                                                    <td className="px-6 py-4 hidden md:table-cell">
                                                                         <span className={`px-2 py-1 rounded font-mono text-xs ${log.method === 'GET' ? 'bg-blue-100 text-blue-700' :
                                                                             log.method === 'POST' ? 'bg-green-100 text-green-700' :
                                                                                 log.method === 'PUT' ? 'bg-yellow-100 text-yellow-700' :
@@ -1298,10 +1581,10 @@
                                                                             {log.query_params && <span className="text-orange-700 dark:text-orange-400 font-bold">?{decodeURIComponent(log.query_params)}</span>}
                                                                         </div>
                                                                     </td>
-                                                                    <td className="px-6 py-4 font-mono text-slate-900 dark:text-gray-200 font-medium">
+                                                                    <td className="px-6 py-4 font-mono text-slate-900 dark:text-gray-200 font-medium hidden sm:table-cell">
                                                                         {log.source_ip}
                                                                     </td>
-                                                                    <td className="px-3 py-3 text-slate-700 dark:text-gray-300 overflow-hidden">
+                                                                    <td className="px-3 py-3 text-slate-700 dark:text-gray-300 overflow-hidden hidden lg:table-cell">
                                                                         <div className="truncate text-xs" title={log.user_agent || 'N/A'}>
                                                                             {log.user_agent || 'N/A'}
                                                                         </div>
@@ -1328,7 +1611,7 @@
                                                     </div>
                                                 )}
                                                 <div className="p-4 border-t border-slate-200 dark:border-neutral-700 flex justify-between items-center bg-slate-50 dark:bg-neutral-900">
-                                                    <p className="text-sm text-slate-600 dark:text-gray-200 dark:text-gray-200">
+                                                    <p className="text-sm text-slate-600 dark:text-gray-200">
                                                         Mostrando {trafficLogs?.logs?.length || 0} de {trafficLogs?.total || 0} logs
                                                         {filterTestAttacks && <span className="ml-2 text-red-600 font-medium">(Solo Test Attacks)</span>}
                                                     </p>
@@ -1337,7 +1620,7 @@
 
                                             {/* Modal de detalles del log */}
                                             {selectedLog && (
-                                                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedLog(null)}>
+                                                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9990] p-4" onClick={() => setSelectedLog(null)}>
                                                     <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
                                                         <div className={`p-6 border-b border-slate-200 dark:border-neutral-700 ${selectedLog.is_test_attack ? 'bg-red-50' : 'bg-slate-50'}`}>
                                                             <div className="flex justify-between items-start">
@@ -1359,7 +1642,7 @@
                                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                                                 <div>
                                                                     <label className="text-xs font-semibold text-slate-500 dark:text-gray-300 dark:text-gray-400 uppercase">Timestamp</label>
-                                                                    <p className="mt-1 font-mono text-sm">{new Date(selectedLog.timestamp).toLocaleString('es-MX')}</p>
+                                                                    <p className="mt-1 font-mono text-sm">{selectedLog.timestamp ? new Date(selectedLog.timestamp).toLocaleString('es-MX') : '—'}</p>
                                                                 </div>
                                                                 <div>
                                                                     <label className="text-xs font-semibold text-slate-500 dark:text-gray-300 dark:text-gray-400 uppercase">Método</label>
@@ -1377,7 +1660,7 @@
                                                                 )}
                                                                 <div>
                                                                     <label className="text-xs font-semibold text-slate-500 dark:text-gray-300 dark:text-gray-400 uppercase">IP Origen</label>
-                                                                    <p className="mt-1 font-mono text-sm">{selectedLog.source_ip}</p>
+                                                                    <p className="mt-1 font-mono text-sm">{selectedLog.source_ip || '—'}</p>
                                                                 </div>
                                                                 <div>
                                                                     <label className="text-xs font-semibold text-slate-500 dark:text-gray-300 dark:text-gray-400 uppercase">Test Attack</label>
@@ -1471,58 +1754,66 @@
                                                         <div className="border border-slate-200 dark:border-neutral-700 rounded-lg p-4 bg-slate-50 dark:bg-neutral-900">
                                                             <div className="flex items-center justify-between mb-3">
                                                                 <h4 className="font-semibold text-slate-800 dark:text-white">XGBoost Classifier</h4>
-                                                                <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full font-medium">Activo</span>
+                                                                <span className={`px-2 py-1 text-xs rounded-full font-medium ${mlPerf?.xgboost?.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                                                                    {mlPerf?.xgboost?.status === 'active' ? 'Activo' : 'N/A'}
+                                                                </span>
                                                             </div>
                                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                                                                 <div>
                                                                     <p className="text-slate-600 dark:text-gray-200">Accuracy</p>
-                                                                    <p className="font-bold text-slate-800 dark:text-white">99.96%</p>
+                                                                    <p className="font-bold text-slate-800 dark:text-white">{mlPerf?.xgboost?.metrics?.accuracy ?? '—'}%</p>
                                                                 </div>
                                                                 <div>
                                                                     <p className="text-slate-600 dark:text-gray-200">Precision</p>
-                                                                    <p className="font-bold text-slate-800 dark:text-white">99.95%</p>
+                                                                    <p className="font-bold text-slate-800 dark:text-white">{mlPerf?.xgboost?.metrics?.precision ?? '—'}%</p>
                                                                 </div>
                                                                 <div>
                                                                     <p className="text-slate-600 dark:text-gray-200">Recall</p>
-                                                                    <p className="font-bold text-slate-800 dark:text-white">100.0%</p>
+                                                                    <p className="font-bold text-slate-800 dark:text-white">{mlPerf?.xgboost?.metrics?.recall ?? '—'}%</p>
                                                                 </div>
                                                                 <div>
                                                                     <p className="text-slate-600 dark:text-gray-200">F1-Score</p>
-                                                                    <p className="font-bold text-slate-800 dark:text-white">99.98%</p>
+                                                                    <p className="font-bold text-slate-800 dark:text-white">{mlPerf?.xgboost?.metrics?.f1_score ?? '—'}%</p>
                                                                 </div>
                                                             </div>
-                                                            <p className="text-xs text-slate-500 dark:text-gray-300 dark:text-gray-300 dark:text-gray-400 mt-3">Último entrenamiento: 2026-01-22</p>
+                                                            <p className="text-xs text-slate-500 dark:text-gray-400 mt-3">
+                                                                {mlPerf?.xgboost?.trained_at ? `Último entrenamiento: ${new Date(mlPerf.xgboost.trained_at).toLocaleDateString()}` : 'Sin datos de entrenamiento'}
+                                                            </p>
                                                         </div>
 
                                                         <div className="border border-slate-200 dark:border-neutral-700 rounded-lg p-4 bg-slate-50 dark:bg-neutral-900">
                                                             <div className="flex items-center justify-between mb-3">
                                                                 <h4 className="font-semibold text-slate-800 dark:text-white">Isolation Forest</h4>
-                                                                <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full font-medium">Activo</span>
+                                                                <span className={`px-2 py-1 text-xs rounded-full font-medium ${mlPerf?.isolation_forest?.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                                                                    {mlPerf?.isolation_forest?.status === 'active' ? 'Activo' : 'N/A'}
+                                                                </span>
                                                             </div>
                                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                                                                 <div>
                                                                     <p className="text-slate-600 dark:text-gray-200">Precision</p>
-                                                                    <p className="font-bold text-slate-800 dark:text-white">45.19%</p>
+                                                                    <p className="font-bold text-slate-800 dark:text-white">{mlPerf?.isolation_forest?.metrics?.precision ?? '—'}%</p>
                                                                 </div>
                                                                 <div>
                                                                     <p className="text-slate-600 dark:text-gray-200">Recall</p>
-                                                                    <p className="font-bold text-slate-800 dark:text-white">94.0%</p>
+                                                                    <p className="font-bold text-slate-800 dark:text-white">{mlPerf?.isolation_forest?.metrics?.recall ?? '—'}%</p>
                                                                 </div>
                                                                 <div>
                                                                     <p className="text-slate-600 dark:text-gray-200">F1-Score</p>
-                                                                    <p className="font-bold text-slate-800 dark:text-white">61.04%</p>
+                                                                    <p className="font-bold text-slate-800 dark:text-white">{mlPerf?.isolation_forest?.metrics?.f1_score ?? '—'}%</p>
                                                                 </div>
                                                                 <div>
                                                                     <p className="text-slate-600 dark:text-gray-200">Precision@10</p>
-                                                                    <p className="font-bold text-slate-800 dark:text-white">100.0%</p>
+                                                                    <p className="font-bold text-slate-800 dark:text-white">{mlPerf?.isolation_forest?.metrics?.precision_at_10 ?? '—'}%</p>
                                                                 </div>
                                                             </div>
-                                                            <p className="text-xs text-slate-500 dark:text-gray-300 dark:text-gray-300 dark:text-gray-400 mt-3">Último entrenamiento: 2026-01-22</p>
+                                                            <p className="text-xs text-slate-500 dark:text-gray-400 mt-3">
+                                                                {mlPerf?.isolation_forest?.trained_at ? `Último entrenamiento: ${new Date(mlPerf.isolation_forest.trained_at).toLocaleDateString()}` : 'Sin datos de entrenamiento'}
+                                                            </p>
                                                         </div>
                                                     </div>
                                                 </div>
 
-                                                <div className="bg-white dark:bg-black rounded-xl p-6 shadow-sm border border-slate-200 dark:border-neutral-700 hover-lift h-96">
+                                                <div className="bg-white dark:bg-black rounded-xl p-6 shadow-sm border border-slate-200 dark:border-neutral-700 hover-lift h-48 sm:h-64 md:h-96">
                                                     <h3 className="font-semibold text-slate-800 dark:text-white mb-4">Tendencia de Amenazas (24h)</h3>
                                                     {traffic && AreaChart ? (
                                                         <ResponsiveContainer width="100%" height="100%">
@@ -1573,12 +1864,21 @@
 
                                     {tab === 'ip-management' && (
                                         <>
+                                            {/* Read-only banner for viewer */}
+                                            {isViewer && (
+                                                <div className="mb-4 px-4 py-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl flex items-center gap-3">
+                                                    <Icons.Eye />
+                                                    <p className="text-sm text-yellow-800 dark:text-yellow-300">
+                                                        <span className="font-semibold">Modo lectura.</span> Tu rol <span className="font-mono">viewer</span> solo permite visualizar esta información.
+                                                    </p>
+                                                </div>
+                                            )}
                                             {/* Statistics Cards */}
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-                                                <div className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 rounded-xl p-6 border border-red-200 dark:border-red-800">
+                                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                                                <div className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 rounded-xl p-5 border border-red-200 dark:border-red-800">
                                                     <div className="flex items-center justify-between">
                                                         <div>
-                                                            <p className="text-sm font-medium text-red-900 dark:text-red-200 mb-1">Total Blocked</p>
+                                                            <p className="text-xs font-medium text-red-900 dark:text-red-200 mb-1">Total Blocked</p>
                                                             <h3 className="text-3xl font-bold text-red-700 dark:text-red-300">{ipStats?.total_blocked || 0}</h3>
                                                             <p className="text-xs text-red-600 dark:text-red-400 mt-1">All time</p>
                                                         </div>
@@ -1588,10 +1888,10 @@
                                                     </div>
                                                 </div>
 
-                                                <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 dark:from-yellow-900/20 dark:to-yellow-800/20 rounded-xl p-6 border border-yellow-200 dark:border-yellow-800">
+                                                <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 dark:from-yellow-900/20 dark:to-yellow-800/20 rounded-xl p-5 border border-yellow-200 dark:border-yellow-800">
                                                     <div className="flex items-center justify-between">
                                                         <div>
-                                                            <p className="text-sm font-medium text-yellow-900 dark:text-yellow-200 mb-1">Blocked Today</p>
+                                                            <p className="text-xs font-medium text-yellow-900 dark:text-yellow-200 mb-1">Blocked Today</p>
                                                             <h3 className="text-3xl font-bold text-yellow-700 dark:text-yellow-300">{ipStats?.blocked_today || 0}</h3>
                                                             <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">Last 24 hours</p>
                                                         </div>
@@ -1601,10 +1901,23 @@
                                                     </div>
                                                 </div>
 
-                                                <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-xl p-6 border border-green-200 dark:border-green-800">
+                                                <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl p-5 border border-blue-200 dark:border-blue-800">
                                                     <div className="flex items-center justify-between">
                                                         <div>
-                                                            <p className="text-sm font-medium text-green-900 dark:text-green-200 mb-1">Whitelisted</p>
+                                                            <p className="text-xs font-medium text-blue-900 dark:text-blue-200 mb-1">Auto Blocked</p>
+                                                            <h3 className="text-3xl font-bold text-blue-700 dark:text-blue-300">{ipStats?.auto_blocks || 0}</h3>
+                                                            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">By threat detector</p>
+                                                        </div>
+                                                        <div className="p-3 bg-blue-200 dark:bg-blue-900 rounded-lg">
+                                                            <Icons.Cpu />
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-xl p-5 border border-green-200 dark:border-green-800">
+                                                    <div className="flex items-center justify-between">
+                                                        <div>
+                                                            <p className="text-xs font-medium text-green-900 dark:text-green-200 mb-1">Whitelisted</p>
                                                             <h3 className="text-3xl font-bold text-green-700 dark:text-green-300">{ipStats?.total_whitelisted || 0}</h3>
                                                             <p className="text-xs text-green-600 dark:text-green-400 mt-1">Trusted IPs</p>
                                                         </div>
@@ -1629,12 +1942,48 @@
                                                     </div>
                                                 </div>
 
+                                                {/* Manual Block Form — analyst/admin only */}
+                                                {isAnalyst && <div className="p-4 border-b border-slate-200 dark:border-neutral-800 bg-slate-50 dark:bg-neutral-900">
+                                                    <div className="flex flex-col sm:flex-row gap-3">
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Ingresar IP a bloquear (ej: 192.168.1.1)"
+                                                            id="manualBlockIPInput"
+                                                            className="flex-1 px-4 py-2 bg-white dark:bg-black border border-slate-300 dark:border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 text-slate-900 dark:text-white"
+                                                        />
+                                                        <button
+                                                            onClick={async () => {
+                                                                const ip = document.getElementById('manualBlockIPInput').value.trim();
+                                                                if (!ip) return showToast('Ingresa una dirección IP', 'warning');
+                                                                if (!isValidIP(ip)) return showToast(`"${ip}" no es una IPv4 válida (ej: 192.168.1.1)`, 'error');
+                                                                if (blockedIPs?.blocked_ips?.some(b => b.ip === ip)) return showToast(`${ip} ya está bloqueada`, 'warning');
+                                                                try {
+                                                                    const res = await authService.fetch(`${API_BASE_URL}/blocked-ips`, {
+                                                                        method: 'POST',
+                                                                        headers: { 'Content-Type': 'application/json' },
+                                                                        body: JSON.stringify({ ip, reason: 'Manual block', permanent: false })
+                                                                    });
+                                                                    if (res.ok) {
+                                                                        showToast(`IP ${ip} bloqueada correctamente`);
+                                                                        document.getElementById('manualBlockIPInput').value = '';
+                                                                        refetchBlockedIPs();
+                                                                    } else {
+                                                                        const d = await res.json();
+                                                                        showToast('Error: ' + (d.error || res.status), 'error');
+                                                                    }
+                                                                } catch (e) { showToast('Error de red: ' + e.message, 'error'); }
+                                                            }}
+                                                            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors min-h-[44px] whitespace-nowrap"
+                                                        >Bloquear IP</button>
+                                                    </div>
+                                                </div>}
+
                                                 {/* Search and Filter */}
                                                 <div className="p-4 bg-slate-50 dark:bg-neutral-900 border-b border-slate-200 dark:border-neutral-800">
                                                     <div className="flex flex-col sm:flex-row gap-3">
                                                         <input
                                                             type="text"
-                                                            placeholder="Search IP address..."
+                                                            placeholder="Search IP or reason..."
                                                             value={ipSearchQuery}
                                                             onChange={(e) => setIpSearchQuery(e.target.value)}
                                                             className="flex-1 px-4 py-2 bg-white dark:bg-black border border-slate-300 dark:border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 dark:text-white"
@@ -1648,49 +1997,91 @@
                                                             <option value="auto">Auto Blocked</option>
                                                             <option value="manual">Manual Blocks</option>
                                                             <option value="permanent">Permanent</option>
+                                                            <optgroup label="Threat Type">
+                                                                <option value="sql">SQL Injection</option>
+                                                                <option value="xss">XSS</option>
+                                                                <option value="cmd">Command Injection</option>
+                                                                <option value="stuffing">Credential Stuffing</option>
+                                                                <option value="travel">Impossible Travel</option>
+                                                            </optgroup>
                                                         </select>
                                                     </div>
                                                 </div>
 
                                                 {/* Table */}
                                                 <div className="overflow-x-auto">
-                                                    <table className="w-full min-w-[640px] text-sm text-left">
+                                                    <table className="w-full min-w-[720px] text-sm text-left">
                                                         <thead className="bg-slate-50 dark:bg-neutral-900 text-slate-600 dark:text-gray-200 uppercase text-xs">
                                                             <tr>
-                                                                <th className="px-6 py-3">IP Address</th>
-                                                                <th className="px-6 py-3">Reason</th>
-                                                                <th className="px-6 py-3">Blocked At</th>
-                                                                <th className="px-6 py-3">Type</th>
-                                                                <th className="px-6 py-3">TTL</th>
-                                                                <th className="px-6 py-3">Actions</th>
+                                                                <th className="px-4 py-3">IP Address</th>
+                                                                <th className="px-4 py-3">Threat Type</th>
+                                                                <th className="px-4 py-3">Reason</th>
+                                                                <th className="px-4 py-3">Blocked At</th>
+                                                                <th className="px-4 py-3">Source</th>
+                                                                <th className="px-4 py-3">TTL</th>
+                                                                <th className="px-4 py-3">Actions</th>
                                                             </tr>
                                                         </thead>
                                                         <tbody className="divide-y divide-slate-200 dark:divide-neutral-800">
-                                                            {filteredBlockedIPs?.map((ip, i) => (
-                                                                <tr key={i} className="bg-white hover:bg-slate-50 dark:bg-neutral-900 dark:hover:bg-neutral-800">
-                                                                    <td className="px-6 py-4 font-mono text-slate-800 dark:text-white font-medium">{ip.ip}</td>
-                                                                    <td className="px-6 py-4 text-slate-600 dark:text-gray-300">{ip.reason}</td>
-                                                                    <td className="px-6 py-4 text-slate-500 dark:text-gray-400">{new Date(ip.blocked_at).toLocaleString()}</td>
-                                                                    <td className="px-6 py-4">
-                                                                        <span className={`px-2 py-1 rounded-full text-xs ${ip.auto_blocked ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' : 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'}`}>
-                                                                            {ip.auto_blocked ? 'Auto' : 'Manual'}
-                                                                        </span>
-                                                                    </td>
-                                                                    <td className="px-6 py-4">
-                                                                        <span className={`px-2 py-1 rounded-full text-xs ${ip.permanent ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'}`}>
-                                                                            {ip.permanent ? 'Permanent' : ip.ttl_seconds ? `${Math.floor(ip.ttl_seconds / 60)}m` : 'N/A'}
-                                                                        </span>
-                                                                    </td>
-                                                                    <td className="px-6 py-4">
-                                                                        <button
-                                                                            onClick={() => handleUnblockIP(ip.ip)}
-                                                                            className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs font-medium transition-colors"
-                                                                        >
-                                                                            Unblock
-                                                                        </button>
+                                                            {filteredBlockedIPs?.map((ip, i) => {
+                                                                const threatMatch = ip.reason?.match(/^\[([^\]]+)\]/);
+                                                                const threatType = threatMatch ? threatMatch[1] : null;
+                                                                const reasonText = threatMatch ? ip.reason.replace(/^\[[^\]]+\]\s*/, '') : ip.reason;
+                                                                const threatColors = {
+                                                                    'SQL Injection': 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
+                                                                    'XSS': 'bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300',
+                                                                    'Command Injection': 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+                                                                    'Credential Stuffing': 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300',
+                                                                    'Impossible Travel': 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
+                                                                    'ML Async Detection': 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+                                                                };
+                                                                const threatColor = threatColors[threatType] || 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300';
+                                                                const ttlSec = ip.remaining_seconds;
+                                                                const ttlLabel = ip.permanent ? 'Permanent' : ttlSec > 0 ? (ttlSec >= 3600 ? `${Math.floor(ttlSec/3600)}h ${Math.floor((ttlSec%3600)/60)}m` : `${Math.floor(ttlSec/60)}m`) : 'Expired';
+                                                                return (
+                                                                    <tr key={i} className="bg-white hover:bg-slate-50 dark:bg-neutral-900 dark:hover:bg-neutral-800">
+                                                                        <td className="px-4 py-4 font-mono text-slate-800 dark:text-white font-medium">{ip.ip}</td>
+                                                                        <td className="px-4 py-4">
+                                                                            {threatType ? (
+                                                                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${threatColor}`}>{threatType}</span>
+                                                                            ) : (
+                                                                                <span className="text-slate-400 dark:text-gray-500 text-xs">—</span>
+                                                                            )}
+                                                                        </td>
+                                                                        <td className="px-4 py-4 text-slate-500 dark:text-gray-400 max-w-[200px] truncate" title={reasonText}>{reasonText}</td>
+                                                                        <td className="px-4 py-4 text-slate-500 dark:text-gray-400 whitespace-nowrap">{new Date(ip.blocked_at).toLocaleString()}</td>
+                                                                        <td className="px-4 py-4">
+                                                                            <span className={`px-2 py-1 rounded-full text-xs ${ip.auto_blocked ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' : 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'}`}>
+                                                                                {ip.auto_blocked ? 'Auto' : 'Manual'}
+                                                                            </span>
+                                                                        </td>
+                                                                        <td className="px-4 py-4">
+                                                                            <span className={`px-2 py-1 rounded-full text-xs ${ip.permanent ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300' : ttlSec <= 0 ? 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'}`}>
+                                                                                {ttlLabel}
+                                                                            </span>
+                                                                        </td>
+                                                                        <td className="px-4 py-4">
+                                                                            {isAnalyst ? (
+                                                                                <button
+                                                                                    onClick={() => handleUnblockIP(ip.ip)}
+                                                                                    className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs font-medium transition-colors"
+                                                                                >
+                                                                                    Unblock
+                                                                                </button>
+                                                                            ) : (
+                                                                                <span className="text-xs text-slate-400 dark:text-gray-500">Read only</span>
+                                                                            )}
+                                                                        </td>
+                                                                    </tr>
+                                                                );
+                                                            })}
+                                                            {filteredBlockedIPs?.length === 0 && (
+                                                                <tr>
+                                                                    <td colSpan="7" className="px-6 py-10 text-center text-slate-400 dark:text-gray-500">
+                                                                        No blocked IPs match the current filter.
                                                                     </td>
                                                                 </tr>
-                                                            ))}
+                                                            )}
                                                         </tbody>
                                                     </table>
                                                 </div>
@@ -1710,6 +2101,42 @@
                                                     </div>
                                                 </div>
 
+                                                {/* Add to Whitelist Form — analyst/admin only */}
+                                                {isAnalyst && <div className="p-4 border-b border-slate-200 dark:border-neutral-800 bg-slate-50 dark:bg-neutral-900">
+                                                    <div className="flex flex-col sm:flex-row gap-3">
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Ingresar IP para whitelist (ej: 10.0.0.1)"
+                                                            id="whitelistIPInput"
+                                                            className="flex-1 px-4 py-2 bg-white dark:bg-black border border-slate-300 dark:border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-slate-900 dark:text-white"
+                                                        />
+                                                        <button
+                                                            onClick={async () => {
+                                                                const ip = document.getElementById('whitelistIPInput').value.trim();
+                                                                if (!ip) return showToast('Ingresa una dirección IP', 'warning');
+                                                                if (!isValidIP(ip)) return showToast(`"${ip}" no es una IPv4 válida`, 'error');
+                                                                if (whitelist?.whitelist?.some(w => w.ip === ip)) return showToast(`${ip} ya está en la whitelist`, 'warning');
+                                                                try {
+                                                                    const res = await authService.fetch(`${API_BASE_URL}/whitelist`, {
+                                                                        method: 'POST',
+                                                                        headers: { 'Content-Type': 'application/json' },
+                                                                        body: JSON.stringify({ ip, reason: 'Manual whitelist' })
+                                                                    });
+                                                                    if (res.ok) {
+                                                                        showToast(`IP ${ip} agregada a whitelist`);
+                                                                        document.getElementById('whitelistIPInput').value = '';
+                                                                        refetchWhitelist();
+                                                                    } else {
+                                                                        const d = await res.json();
+                                                                        showToast('Error: ' + (d.error || res.status), 'error');
+                                                                    }
+                                                                } catch (e) { showToast('Error de red: ' + e.message, 'error'); }
+                                                            }}
+                                                            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors min-h-[44px] whitespace-nowrap"
+                                                        >Agregar a Whitelist</button>
+                                                    </div>
+                                                </div>}
+
                                                 <div className="overflow-x-auto">
                                                     <table className="w-full text-sm text-left">
                                                         <thead className="bg-slate-50 dark:bg-neutral-900 text-slate-600 dark:text-gray-200 uppercase text-xs">
@@ -1727,12 +2154,16 @@
                                                                     <td className="px-6 py-4 text-slate-600 dark:text-gray-300">{ip.reason}</td>
                                                                     <td className="px-6 py-4 text-slate-500 dark:text-gray-400">{new Date(ip.added_at).toLocaleString()}</td>
                                                                     <td className="px-6 py-4">
-                                                                        <button
-                                                                            onClick={() => handleRemoveFromWhitelist(ip.ip)}
-                                                                            className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-medium transition-colors"
-                                                                        >
-                                                                            Remove
-                                                                        </button>
+                                                                        {isAnalyst ? (
+                                                                            <button
+                                                                                onClick={() => handleRemoveFromWhitelist(ip.ip)}
+                                                                                className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-medium transition-colors"
+                                                                            >
+                                                                                Remove
+                                                                            </button>
+                                                                        ) : (
+                                                                            <span className="text-xs text-slate-400 dark:text-gray-500">Read only</span>
+                                                                        )}
                                                                     </td>
                                                                 </tr>
                                                             ))}
@@ -1751,6 +2182,17 @@
                                                 <p className="text-sm text-slate-500 dark:text-gray-400">Compare and manage ML model performance in production</p>
                                             </div>
 
+                                            {/* Analyst read-only notice */}
+                                            {!isAdmin && (
+                                                <div className="flex items-start gap-3 px-4 py-3 mb-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl text-sm text-blue-800 dark:text-blue-300">
+                                                    <svg className="w-4 h-4 mt-0.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+                                                    <span>
+                                                        <span className="font-semibold">Modo lectura.</span> Puedes visualizar métricas y comparativas.
+                                                        Los controles de <span className="font-mono">Promote to Production</span>, <span className="font-mono">Traffic Split</span> y <span className="font-mono">Reset Metrics</span> requieren rol <span className="font-mono">admin</span>.
+                                                    </span>
+                                                </div>
+                                            )}
+
                                             {/* Promotion Alert */}
                                             {abStats?.comparison?.can_auto_promote && (
                                                 <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl p-4 sm:p-6 border border-green-200 dark:border-green-800 mb-6">
@@ -1764,24 +2206,26 @@
                                                                 Model B has {abStats?.comparison?.accuracy_diff?.toFixed(2)}% higher accuracy. Consider promoting to production.
                                                             </p>
                                                         </div>
+                                                        {isAdmin && (
                                                         <button
                                                             onClick={async () => {
-                                                                if (confirm('Are you sure you want to promote Model B to production?')) {
-                                                                    try {
-                                                                        const response = await fetch('/api/ab-testing/promote', { method: 'POST' });
-                                                                        if (response.ok) {
-                                                                            alert('Model B promoted successfully!');
-                                                                            refetchABStats();
-                                                                        }
-                                                                    } catch (error) {
-                                                                        alert('Error promoting model: ' + error.message);
+                                                                try {
+                                                                    const response = await authService.fetch('/api/ab-testing/promote', { method: 'POST' });
+                                                                    if (response.ok) {
+                                                                        showToast('Modelo B promovido a producción correctamente', 'success');
+                                                                        refetchABStats();
+                                                                    } else {
+                                                                        showToast('Error al promover el modelo', 'error');
                                                                     }
+                                                                } catch (error) {
+                                                                    showToast('Error al promover modelo: ' + error.message, 'error');
                                                                 }
                                                             }}
                                                             className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors whitespace-nowrap min-h-[44px]"
                                                         >
                                                             Promote to Production
                                                         </button>
+                                                        )}
                                                     </div>
                                                 </div>
                                             )}
@@ -1883,44 +2327,51 @@
                                                 </div>
 
                                                 <div className="space-y-4">
-                                                    <input
-                                                        type="range"
-                                                        min="0"
-                                                        max="100"
-                                                        value={trafficSplit}
-                                                        onChange={(e) => setTrafficSplit(parseInt(e.target.value))}
-                                                        className="w-full h-2 bg-slate-200 dark:bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                                                    />
-
+                                                    {/* Traffic split labels — visible to all */}
                                                     <div className="flex justify-between text-sm">
                                                         <span className="text-slate-600 dark:text-gray-400">
-                                                            Model A: <span className="font-semibold text-slate-800 dark:text-white">{trafficSplit}%</span>
+                                                            Model A: <span className="font-semibold text-slate-800 dark:text-white">{abStats?.model_a?.traffic_percentage ?? trafficSplit}%</span>
                                                         </span>
                                                         <span className="text-slate-600 dark:text-gray-400">
-                                                            Model B: <span className="font-semibold text-slate-800 dark:text-white">{100 - trafficSplit}%</span>
+                                                            Model B: <span className="font-semibold text-slate-800 dark:text-white">{abStats?.model_b?.traffic_percentage ?? (100 - trafficSplit)}%</span>
                                                         </span>
                                                     </div>
 
-                                                    <button
-                                                        onClick={async () => {
-                                                            try {
-                                                                const response = await fetch('/api/ab-testing/traffic-split', {
-                                                                    method: 'POST',
-                                                                    headers: { 'Content-Type': 'application/json' },
-                                                                    body: JSON.stringify({ model_a_percentage: trafficSplit })
-                                                                });
-                                                                if (response.ok) {
-                                                                    alert(`Traffic split updated: ${trafficSplit}% / ${100 - trafficSplit}%`);
-                                                                    refetchABStats();
+                                                    {/* Slider + button — admin only */}
+                                                    {isAdmin && (
+                                                        <>
+                                                        <input
+                                                            type="range"
+                                                            min="0"
+                                                            max="100"
+                                                            value={trafficSplit}
+                                                            onChange={(e) => setTrafficSplit(parseInt(e.target.value))}
+                                                            className="w-full h-2 bg-slate-200 dark:bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                                                        />
+                                                        <button
+                                                            onClick={async () => {
+                                                                try {
+                                                                    const response = await authService.fetch('/api/ab-testing/traffic-split', {
+                                                                        method: 'POST',
+                                                                        headers: { 'Content-Type': 'application/json' },
+                                                                        body: JSON.stringify({ model_a_percentage: trafficSplit })
+                                                                    });
+                                                                    if (response.ok) {
+                                                                        showToast(`División de tráfico actualizada: ${trafficSplit}% / ${100 - trafficSplit}%`, 'success');
+                                                                        refetchABStats();
+                                                                    } else {
+                                                                        showToast('Error al actualizar división de tráfico', 'error');
+                                                                    }
+                                                                } catch (error) {
+                                                                    showToast('Error al actualizar tráfico: ' + error.message, 'error');
                                                                 }
-                                                            } catch (error) {
-                                                                alert('Error updating traffic split: ' + error.message);
-                                                            }
-                                                        }}
-                                                        className="w-full px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors min-h-[44px]"
-                                                    >
-                                                        Update Traffic Split
-                                                    </button>
+                                                            }}
+                                                            className="w-full px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors min-h-[44px]"
+                                                        >
+                                                            Actualizar División de Tráfico
+                                                        </button>
+                                                        </>
+                                                    )}
                                                 </div>
                                             </div>
 
@@ -1992,24 +2443,26 @@
 
                                             {/* Quick Actions */}
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                {isAdmin && (
                                                 <button
                                                     onClick={async () => {
-                                                        if (confirm('Are you sure you want to reset all A/B testing metrics?')) {
-                                                            try {
-                                                                const response = await fetch('/api/ab-testing/reset', { method: 'POST' });
-                                                                if (response.ok) {
-                                                                    alert('Metrics reset successfully!');
-                                                                    refetchABStats();
-                                                                }
-                                                            } catch (error) {
-                                                                alert('Error resetting metrics: ' + error.message);
+                                                        try {
+                                                            const response = await authService.fetch('/api/ab-testing/reset', { method: 'POST' });
+                                                            if (response.ok) {
+                                                                showToast('Métricas reiniciadas correctamente', 'success');
+                                                                refetchABStats();
+                                                            } else {
+                                                                showToast('Error al reiniciar métricas', 'error');
                                                             }
+                                                        } catch (error) {
+                                                            showToast('Error al reiniciar métricas: ' + error.message, 'error');
                                                         }
                                                     }}
                                                     className="px-4 py-3 bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200 dark:hover:bg-neutral-700 text-slate-700 dark:text-gray-300 rounded-lg font-medium transition-colors min-h-[44px]"
                                                 >
                                                     Reset Metrics
                                                 </button>
+                                                )}
                                                 <button
                                                     onClick={() => refetchABStats()}
                                                     className="px-4 py-3 bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200 dark:hover:bg-neutral-700 text-slate-700 dark:text-gray-300 rounded-lg font-medium transition-colors min-h-[44px] flex items-center justify-center gap-2"
@@ -2025,11 +2478,32 @@
                                         <>
                                             {/* Header */}
                                             <div className="mb-6">
-                                                <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-2">🧠 Continuous Learning Status</h2>
-                                                <p className="text-sm text-slate-500 dark:text-gray-400">Real-time monitoring of ML model training and performance</p>
+                                                <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-2">ML Status</h2>
+                                                <p className="text-sm text-slate-500 dark:text-gray-400">
+                                                    {isAnalyst ? 'Real-time monitoring of ML model training and performance' : 'Model performance metrics'}
+                                                </p>
                                             </div>
 
-                                            {/* Training Buffer Progress */}
+                                            {/* Viewer: solo métricas de rendimiento del modelo */}
+                                            {isViewer && (
+                                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                                                    {[
+                                                        { label: 'Accuracy',  value: mlPerf?.xgboost?.metrics?.accuracy, color: 'green' },
+                                                        { label: 'Precision', value: mlPerf?.xgboost?.metrics?.precision, color: 'purple' },
+                                                        { label: 'Recall',    value: mlPerf?.xgboost?.metrics?.recall,    color: 'orange' },
+                                                        { label: 'F1-Score',  value: mlPerf?.xgboost?.metrics?.f1_score,  color: 'blue' },
+                                                    ].map(({ label, value, color }) => (
+                                                        <div key={label} className={`bg-gradient-to-br from-${color}-50 to-${color}-100 dark:from-${color}-900/20 dark:to-${color}-800/20 rounded-xl p-5 border border-${color}-200 dark:border-${color}-800`}>
+                                                            <p className={`text-xs font-medium text-${color}-900 dark:text-${color}-200 mb-1`}>{label}</p>
+                                                            <h3 className={`text-3xl font-bold text-${color}-700 dark:text-${color}-300`}>{value ?? '—'}%</h3>
+                                                            <p className={`text-xs text-${color}-500 dark:text-${color}-400 mt-1`}>XGBoost</p>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            {/* Training Buffer Progress — analyst/admin only */}
+                                            {isAnalyst && <>{/* Training Buffer Progress */}
                                             <div className="bg-white dark:bg-black rounded-xl p-6 shadow-sm border border-slate-200 dark:border-neutral-700 mb-6">
                                                 <div className="flex items-center justify-between mb-4">
                                                     <div>
@@ -2071,7 +2545,7 @@
                                                         </div>
                                                     </div>
                                                     <h3 className="text-3xl font-bold text-blue-700 dark:text-blue-300">
-                                                        {clStats?.model_performance?.f1_score?.toFixed(2) || '99.96'}%
+                                                        {clStats?.model_performance?.f1_score?.toFixed(2) ?? mlPerf?.xgboost?.metrics?.f1_score ?? '—'}%
                                                     </h3>
                                                     <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">Model quality</p>
                                                 </div>
@@ -2084,7 +2558,7 @@
                                                         </div>
                                                     </div>
                                                     <h3 className="text-3xl font-bold text-green-700 dark:text-green-300">
-                                                        {clStats?.model_performance?.accuracy?.toFixed(2) || '99.96'}%
+                                                        {clStats?.model_performance?.accuracy?.toFixed(2) ?? mlPerf?.xgboost?.metrics?.accuracy ?? '—'}%
                                                     </h3>
                                                     <p className="text-xs text-green-600 dark:text-green-400 mt-1">Overall correctness</p>
                                                 </div>
@@ -2097,7 +2571,7 @@
                                                         </div>
                                                     </div>
                                                     <h3 className="text-3xl font-bold text-purple-700 dark:text-purple-300">
-                                                        {clStats?.model_performance?.precision?.toFixed(2) || '99.95'}%
+                                                        {clStats?.model_performance?.precision?.toFixed(2) ?? mlPerf?.xgboost?.metrics?.precision ?? '—'}%
                                                     </h3>
                                                     <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">True positives</p>
                                                 </div>
@@ -2110,7 +2584,7 @@
                                                         </div>
                                                     </div>
                                                     <h3 className="text-3xl font-bold text-orange-700 dark:text-orange-300">
-                                                        {clStats?.model_performance?.recall?.toFixed(2) || '99.98'}%
+                                                        {clStats?.model_performance?.recall?.toFixed(2) ?? mlPerf?.xgboost?.metrics?.recall ?? '—'}%
                                                     </h3>
                                                     <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">Threat detection</p>
                                                 </div>
@@ -2197,7 +2671,10 @@
                                                     </div>
 
                                                     <div className="mt-4 pt-4 border-t border-slate-200 dark:border-neutral-700">
-                                                        <button className="w-full px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors">
+                                                        <button
+                                                            onClick={() => { setShowTrainingLogsModal(true); fetchTrainingLogs(); }}
+                                                            className="w-full px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors"
+                                                        >
                                                             View Training Logs
                                                         </button>
                                                     </div>
@@ -2227,11 +2704,72 @@
                                                     </div>
                                                 </div>
                                             </div>
+                                            </>}
                                         </>
                                     )}
                                 </div>
                             </div>
                         </div>
+
+                        {/* Training Logs Modal */}
+                        {showTrainingLogsModal && (
+                            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9990] p-4">
+                                <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+                                    <div className="flex items-center justify-between p-5 border-b border-slate-200 dark:border-neutral-700">
+                                        <h3 className="text-lg font-semibold text-slate-800 dark:text-white">Historial de Entrenamientos</h3>
+                                        <button onClick={() => setShowTrainingLogsModal(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-gray-200 text-xl font-bold">×</button>
+                                    </div>
+                                    <div className="overflow-auto flex-1 p-5">
+                                        {trainingJobsLoading ? (
+                                            <p className="text-slate-500 dark:text-gray-400 text-center py-8">Cargando...</p>
+                                        ) : trainingJobs.length === 0 ? (
+                                            <p className="text-slate-500 dark:text-gray-400 text-center py-8">No hay training jobs registrados.</p>
+                                        ) : (
+                                            <table className="w-full text-sm">
+                                                <thead className="bg-slate-50 dark:bg-neutral-800 text-slate-600 dark:text-gray-300 uppercase text-xs">
+                                                    <tr>
+                                                        <th className="px-3 py-2 text-left">Nombre</th>
+                                                        <th className="px-3 py-2 text-left">Estado</th>
+                                                        <th className="px-3 py-2 text-left">Modelo</th>
+                                                        <th className="px-3 py-2 text-left">Duración</th>
+                                                        <th className="px-3 py-2 text-left">Creado</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100 dark:divide-neutral-700">
+                                                    {trainingJobs.map((job, i) => (
+                                                        <tr key={i} className="hover:bg-slate-50 dark:hover:bg-neutral-800">
+                                                            <td className="px-3 py-2 font-mono text-xs text-slate-700 dark:text-gray-200">{job.name}</td>
+                                                            <td className="px-3 py-2">
+                                                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${job.status === 'Completed' ? 'bg-green-100 text-green-700' : job.status === 'Failed' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                                                                    {job.status === 'Completed' ? 'Completado' : job.status === 'Failed' ? 'Fallido' : job.status === 'InProgress' ? 'En progreso' : job.status || '—'}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-3 py-2 text-slate-600 dark:text-gray-300">{job.model_name || '—'}</td>
+                                                            <td className="px-3 py-2 text-slate-600 dark:text-gray-300">{job.training_time ? `${job.training_time.toFixed(1)}s` : '—'}</td>
+                                                            <td className="px-3 py-2 text-slate-500 dark:text-gray-400">{job.created ? new Date(job.created).toLocaleString() : '—'}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        {/* Toast notifications */}
+                        <div className="fixed bottom-5 right-5 z-[9999] flex flex-col gap-2 pointer-events-none" aria-live="polite">
+                            {toasts.map(t => (
+                                <div key={t.id} className={`px-4 py-3 rounded-xl shadow-lg text-sm font-medium text-white pointer-events-auto flex items-center gap-2 animate-fade-in ${
+                                    t.type === 'error' ? 'bg-red-600' :
+                                    t.type === 'warning' ? 'bg-amber-500' :
+                                    'bg-emerald-600'
+                                }`}>
+                                    <span>{t.type === 'success' ? '✅' : t.type === 'error' ? '❌' : '⚠️'}</span>
+                                    <span>{t.msg}</span>
+                                </div>
+                            ))}
+                        </div>
+                        </>
                     );
                 };
 
@@ -2270,7 +2808,7 @@
                 const bodyElement = document.body;
                 if (bodyElement) {
                     const errorDiv = document.createElement('div');
-                    errorDiv.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #fee; border: 2px solid #f00; padding: 20px; border-radius: 8px; max-width: 600px; font-family: monospace; z-index: 9999;';
+                    errorDiv.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #fee; border: 2px solid #f00; padding: 20px; border-radius: 8px; max-width: min(600px, 90vw); font-family: monospace; z-index: 5000;';
                     errorDiv.innerHTML = `
                     <h3 style="color: #c00; margin: 0 0 10px 0;">Dashboard Error</h3>
                     <p style="margin: 0 0 10px 0;"><strong>Message:</strong> ${error.message}</p>

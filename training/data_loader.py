@@ -14,17 +14,21 @@ from sklearn.model_selection import train_test_split
 from typing import Tuple, Dict
 import re
 import warnings
+from pathlib import Path
 warnings.filterwarnings('ignore')
+
+_TRAINING_DIR = Path(__file__).parent
+_RAW_DIR = _TRAINING_DIR / 'raw'
 
 
 class DataLoader:
     """Carga y preprocesa datasets de SQL Injection"""
-    
+
     def __init__(self):
         self.datasets = {
-            'csic': '/home/vbox/Downloads/archive/csic_database.csv',
-            'sqliv3': '/home/vbox/Downloads/archive (1)/SQLiV3.csv',
-            'sqli': '/home/vbox/Downloads/archive (1)/sqli.csv'
+            'csic': str(_RAW_DIR / 'csic_database.csv'),
+            'sqliv3': str(_RAW_DIR / 'SQLiV3.csv'),
+            'sqli': str(_RAW_DIR / 'sqli.csv')
         }
         
     def load_csic_database(self) -> pd.DataFrame:
@@ -271,14 +275,16 @@ class DataLoader:
         """Guarda los splits en archivos CSV"""
         print("\n💾 Guardando splits...")
         
-        train_df.to_csv('data/train.csv', index=False)
-        print(f"  ✓ Train guardado: data/train.csv")
-        
-        val_df.to_csv('data/val.csv', index=False)
-        print(f"  ✓ Val guardado: data/val.csv")
-        
-        test_df.to_csv('data/test.csv', index=False)
-        print(f"  ✓ Test guardado: data/test.csv")
+        _data_dir = _TRAINING_DIR.parent / 'data'
+        _data_dir.mkdir(parents=True, exist_ok=True)
+        train_df.to_csv(str(_data_dir / 'train.csv'), index=False)
+        print(f"  ✓ Train guardado: {_data_dir / 'train.csv'}")
+
+        val_df.to_csv(str(_data_dir / 'val.csv'), index=False)
+        print(f"  ✓ Val guardado: {_data_dir / 'val.csv'}")
+
+        test_df.to_csv(str(_data_dir / 'test.csv'), index=False)
+        print(f"  ✓ Test guardado: {_data_dir / 'test.csv'}")
     
     def get_statistics(self, df: pd.DataFrame) -> Dict:
         """Obtiene estadísticas del dataset"""
