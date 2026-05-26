@@ -9,6 +9,7 @@ Fecha: 2026-02-11
 """
 
 import os
+import socket
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
 import logging
@@ -81,8 +82,17 @@ class DynamoDBClient:
             }
         
         # Crear tablas si no existen
-        self._init_tables()
-        
+        self.db_available = False
+        _prev_timeout = socket.getdefaulttimeout()
+        socket.setdefaulttimeout(2)
+        try:
+            self._init_tables()
+            self.db_available = True
+        except Exception as e:
+            logger.warning(f"⚠️  DynamoDB/LocalStack no disponible: {e}. Modo offline.")
+        finally:
+            socket.setdefaulttimeout(_prev_timeout)
+
         logger.info(f"✅ DynamoDB Client inicializado ({'LocalStack' if use_localstack else 'AWS'})")
     
     def _init_tables(self):
@@ -206,9 +216,12 @@ class DynamoDBClient:
         Returns:
             True si se insertó exitosamente
         """
+        if not self.db_available:
+            return False
+
         try:
             table = self.dynamodb.Table(self.tables['traffic_logs'])
-            
+
             # Generar ID y timestamp si no existen
             if 'id' not in log_data:
                 log_data['id'] = f"log_{datetime.now().timestamp()}"

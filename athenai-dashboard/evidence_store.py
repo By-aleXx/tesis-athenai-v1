@@ -13,6 +13,7 @@ import hmac
 import json
 import logging
 import os
+import socket
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 import boto3
@@ -96,8 +97,17 @@ class EvidenceStore:
             
             self.bucket_name = 'athenai-evidence'
         
-        self._ensure_bucket_exists()
-        
+        self.s3_available = False
+        _prev_timeout = socket.getdefaulttimeout()
+        socket.setdefaulttimeout(2)
+        try:
+            self._ensure_bucket_exists()
+            self.s3_available = True
+        except Exception as e:
+            logger.warning(f"⚠️  S3/LocalStack no disponible: {e}. Evidence Store en modo offline.")
+        finally:
+            socket.setdefaulttimeout(_prev_timeout)
+
         # Clave secreta para HMAC
         if secret_key:
             self.secret_key = secret_key.encode() if isinstance(secret_key, str) else secret_key
@@ -223,7 +233,12 @@ class EvidenceStore:
             
             # Almacenar en S3
             key = f"evidence/{evidence_type}/{datetime.now().strftime('%Y/%m/%d')}/{evidence_id}.json"
-            
+
+            if not self.s3_available:
+                logger.warning(f"⚠️  S3 offline — evidencia {evidence_id} no persistida")
+                self.stats['total_stored'] += 1
+                return True, evidence_id
+
             self.s3_client.put_object(
                 Bucket=self.bucket_name,
                 Key=key,

@@ -104,29 +104,37 @@ class IPAddressField(fields.String):
 # Schemas de autenticación
 # ============================================================
 
+# V-07: regex de complejidad — mínimo 12 chars, mayúscula, minúscula, dígito y símbolo
+_PASSWORD_COMPLEXITY_RE = re.compile(
+    r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};\':"\\|,.<>\/?]).{12,128}$'
+)
+
+
 class LoginSchema(Schema):
-    """Validación para POST /api/auth/login"""
+    """Validación para POST /api/auth/login.
+
+    V-05: solo validación estructural (campos presentes).
+    NO se valida longitud/complejidad de password aquí para evitar que un
+    422 revele si el formato fue aceptado antes de comprobar credenciales.
+    """
 
     class Meta:
-        unknown = EXCLUDE  # Ignorar campos no declarados
+        unknown = EXCLUDE
 
     username = fields.String(
         required=True,
         validate=[
-            validate.Length(min=2, max=50,
-                            error="El username debe tener entre 2 y 50 caracteres."),
+            validate.Length(min=1, max=50, error="Username requerido."),
             validate.Regexp(
                 r'^[a-zA-Z0-9_.-]+$',
-                error="El username solo puede contener letras, números, _, . y -"
+                error="Username contiene caracteres no permitidos."
             )
         ]
     )
+    # V-05: max=128 evita DoS por hash de strings enormes; no hay min para no crear oracle
     password = fields.String(
         required=True,
-        validate=validate.Length(
-            min=6, max=128,
-            error="La contraseña debe tener entre 6 y 128 caracteres."
-        )
+        validate=validate.Length(min=1, max=128, error="Password requerido.")
     )
 
 
@@ -143,20 +151,25 @@ class RegisterSchema(Schema):
                             error="El username debe tener entre 2 y 50 caracteres."),
             validate.Regexp(
                 r'^[a-zA-Z0-9_.-]+$',
-                error="El username solo puede contener letras, números, _, . y -"
+                error="El username solo puede contener letras, numeros, _, . y -"
             )
         ]
     )
+    # V-07: mínimo 12 caracteres + complejidad (mayúscula, minúscula, dígito, símbolo)
     password = fields.String(
         required=True,
-        validate=validate.Length(
-            min=6, max=128,
-            error="La contraseña debe tener entre 6 y 128 caracteres."
-        )
+        validate=[
+            validate.Length(min=12, max=128,
+                            error="La contrasena debe tener minimo 12 caracteres."),
+            validate.Regexp(
+                _PASSWORD_COMPLEXITY_RE,
+                error="La contrasena debe incluir mayuscula, minuscula, numero y simbolo."
+            )
+        ]
     )
     email = fields.Email(
         required=True,
-        error_messages={'validator_failed': 'Dirección de email inválida.'}
+        error_messages={'validator_failed': 'Direccion de email invalida.'}
     )
     role = fields.String(
         load_default='viewer',
@@ -167,6 +180,9 @@ class RegisterSchema(Schema):
     )
 
 
+_JWT_RE = re.compile(r'^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$')
+
+
 class RefreshTokenSchema(Schema):
     """Validación para POST /api/auth/refresh"""
 
@@ -175,10 +191,10 @@ class RefreshTokenSchema(Schema):
 
     refresh_token = fields.String(
         required=True,
-        validate=validate.Length(
-            min=10,
-            error="refresh_token inválido."
-        )
+        validate=[
+            validate.Length(min=20, max=4096, error="refresh_token inválido."),
+            validate.Regexp(_JWT_RE, error="refresh_token no tiene formato JWT válido (header.payload.signature).")
+        ]
     )
 
 
@@ -246,6 +262,88 @@ class TrafficSplitSchema(Schema):
             error="El porcentaje debe estar entre 0 y 100."
         )
     )
+
+
+class AlertsQuerySchema(Schema):
+    """Validación de query params para GET /api/alerts"""
+
+    class Meta:
+        unknown = EXCLUDE
+
+    limit = fields.Integer(
+        load_default=50,
+        validate=validate.Range(min=1, max=200, error="limit debe estar entre 1 y 200.")
+    )
+    offset = fields.Integer(
+        load_default=0,
+        validate=validate.Range(min=0, error="offset debe ser >= 0.")
+    )
+    severity = fields.String(load_default='')
+    status = fields.String(load_default='')
+
+
+_ALLOWED_HTTP_METHODS = {'GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'}
+_MAX_PAYLOAD_BYTES = 10_240   # 10 KB — evita DoS al motor ML con inputs masivos
+_ALLOWED_ENDPOINTS = frozenset({
+    'threat-detector-prod',
+    'threat-detector-staging',
+    'anomaly-detector-prod',
+})
+
+
+class AnalyzeRequestSchema(Schema):
+    """Validación para POST /api/security/analyze.
+
+    V-12b: limita el tamaño del payload (DoS) y valida method/path.
+    source_ip se ignora aquí — el handler siempre usa _client_ip().
+    """
+
+    class Meta:
+        unknown = EXCLUDE
+
+    payload = fields.String(
+        load_default='',
+        validate=validate.Length(
+            max=_MAX_PAYLOAD_BYTES,
+            error=f"payload no puede superar los {_MAX_PAYLOAD_BYTES} bytes."
+        )
+    )
+    method = fields.String(
+        load_default='GET',
+        validate=validate.OneOf(
+            _ALLOWED_HTTP_METHODS,
+            error=f"method debe ser uno de: {', '.join(sorted(_ALLOWED_HTTP_METHODS))}."
+        )
+    )
+    path = fields.String(
+        load_default='/',
+        validate=[
+            validate.Length(max=2048, error="path no puede superar los 2048 caracteres."),
+            validate.Regexp(
+                r'^/[^\x00-\x1f]*$',
+                error="path debe comenzar con '/' y no puede contener caracteres de control."
+            )
+        ]
+    )
+
+
+class MLPredictSchema(Schema):
+    """Validación para POST /api/ml/predict.
+
+    V-12c: endpoint_name debe estar en el allowlist para evitar invocación arbitraria.
+    """
+
+    class Meta:
+        unknown = EXCLUDE
+
+    endpoint_name = fields.String(
+        required=True,
+        validate=validate.OneOf(
+            _ALLOWED_ENDPOINTS,
+            error=f"endpoint_name no permitido. Valores aceptados: {', '.join(sorted(_ALLOWED_ENDPOINTS))}."
+        )
+    )
+    features = fields.Raw(required=True)
 
 
 class PolicyThresholdSchema(Schema):

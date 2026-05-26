@@ -4,7 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AthenAI — Detección de Intrusiones Web con IA</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Tailwind CSS v3.4.1 — servido localmente con fallback CDN -->
+  <script src="/static/tailwind.min.js" onerror="this.onerror=null;this.src='https://cdn.tailwindcss.com/3.4.1'"></script>
   <script>
     tailwind.config = {
       darkMode: 'class',
@@ -84,8 +85,8 @@
 
       <!-- Logo -->
       <a href="#inicio" class="flex items-center gap-2 group">
-        <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center shadow-lg group-hover:bg-indigo-500 transition-colors">
-          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center shadow-lg group-hover:bg-indigo-500 transition-colors" style="width:32px;height:32px;flex-shrink:0">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="20" height="20">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.955 11.955 0 003 10c0 5.592 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.57-.598-3.75h-.152c-3.196 0-6.1-1.249-8.25-3.286z"/>
           </svg>
         </div>
@@ -156,7 +157,7 @@
 
     <!-- Subtitle -->
     <p class="text-lg sm:text-xl text-slate-300 max-w-2xl mx-auto mb-10 leading-relaxed reveal">
-      Sistema híbrido multicapa que combina XGBoost, Random Forest y DistilBERT para proteger aplicaciones web en tiempo real con <span class="text-indigo-300 font-semibold">99.96% de precisión</span>.
+      Sistema de detección de intrusiones web que combina XGBoost con TF-IDF, motor de políticas adaptativo y aprendizaje continuo para proteger aplicaciones en tiempo real con <span class="text-indigo-300 font-semibold">99.96% de precisión</span>.
     </p>
 
     <!-- Buttons -->
@@ -236,7 +237,7 @@
       <div class="reveal group p-6 bg-white dark:bg-neutral-900 rounded-2xl border border-slate-200 dark:border-neutral-700 hover:border-purple-300 dark:hover:border-purple-700 hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
         <div class="w-12 h-12 rounded-xl bg-purple-50 dark:bg-purple-900/30 flex items-center justify-center text-2xl mb-4">🤖</div>
         <h3 class="font-bold text-slate-900 dark:text-white mb-2">ML Híbrido</h3>
-        <p class="text-sm text-slate-500 dark:text-gray-400 leading-relaxed">XGBoost + TF-IDF para detección rápida. DistilBERT + Isolation Forest para análisis semántico profundo.</p>
+        <p class="text-sm text-slate-500 dark:text-gray-400 leading-relaxed">XGBoost + TF-IDF para detección rápida. Motor de políticas adaptativo y aprendizaje continuo para respuesta automática en tiempo real.</p>
       </div>
     </div>
   </div>
@@ -291,11 +292,11 @@
         <div class="h-full p-6 bg-white dark:bg-neutral-800 rounded-2xl border-l-4 border-violet-500 border border-r-slate-200 dark:border-r-neutral-700 border-t-slate-200 dark:border-t-neutral-700 border-b-slate-200 dark:border-b-neutral-700 shadow-sm hover:shadow-lg transition-shadow layer-arrow">
           <div class="flex items-center gap-2 mb-3">
             <span class="text-xs font-bold text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/30 px-2 py-0.5 rounded-full">CAPA 2</span>
-            <span class="text-xs font-medium text-slate-400 dark:text-gray-500 bg-slate-50 dark:bg-neutral-900 px-2 py-0.5 rounded-full border border-slate-200 dark:border-neutral-700">Ensemble</span>
+            <span class="text-xs font-medium text-slate-400 dark:text-gray-500 bg-slate-50 dark:bg-neutral-900 px-2 py-0.5 rounded-full border border-slate-200 dark:border-neutral-700">Motor de Políticas</span>
           </div>
-          <div class="text-2xl mb-2">🌲</div>
-          <h3 class="font-bold text-slate-900 dark:text-white mb-1">Random Forest</h3>
-          <p class="text-sm text-slate-500 dark:text-gray-400 leading-relaxed">Ensemble de 100 árboles de decisión para segunda validación. F1: 99.95%. AUC-ROC: 99.9999%. Segunda opinión independiente.</p>
+          <div class="text-2xl mb-2">⚖️</div>
+          <h3 class="font-bold text-slate-900 dark:text-white mb-1">Motor de Políticas</h3>
+          <p class="text-sm text-slate-500 dark:text-gray-400 leading-relaxed">Decisión adaptativa en cascada: ALLOW / LOG / ALERT / RATE-LIMIT / BLOCK según umbral de confianza del modelo. Respuesta automática sin intervención humana.</p>
         </div>
       </div>
 
@@ -304,11 +305,11 @@
         <div class="h-full p-6 bg-white dark:bg-neutral-800 rounded-2xl border-l-4 border-purple-500 border border-r-slate-200 dark:border-r-neutral-700 border-t-slate-200 dark:border-t-neutral-700 border-b-slate-200 dark:border-b-neutral-700 shadow-sm hover:shadow-lg transition-shadow">
           <div class="flex items-center gap-2 mb-3">
             <span class="text-xs font-bold text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 px-2 py-0.5 rounded-full">CAPA 3</span>
-            <span class="text-xs font-medium text-slate-400 dark:text-gray-500 bg-slate-50 dark:bg-neutral-900 px-2 py-0.5 rounded-full border border-slate-200 dark:border-neutral-700">Deep Learning</span>
+            <span class="text-xs font-medium text-slate-400 dark:text-gray-500 bg-slate-50 dark:bg-neutral-900 px-2 py-0.5 rounded-full border border-slate-200 dark:border-neutral-700">Aprendizaje Continuo</span>
           </div>
-          <div class="text-2xl mb-2">🧠</div>
-          <h3 class="font-bold text-slate-900 dark:text-white mb-1">DistilBERT + Isolation Forest</h3>
-          <p class="text-sm text-slate-500 dark:text-gray-400 leading-relaxed">Transformer fine-tuned para análisis semántico + detección de anomalías no supervisada. Recall: 93.33%.</p>
+          <div class="text-2xl mb-2">🔄</div>
+          <h3 class="font-bold text-slate-900 dark:text-white mb-1">Aprendizaje Continuo</h3>
+          <p class="text-sm text-slate-500 dark:text-gray-400 leading-relaxed">SGDClassifier online adapta el modelo a nuevos patrones de ataque sin reentrenamiento completo. Detección de data poisoning y concept drift en tiempo real.</p>
         </div>
       </div>
 
@@ -398,14 +399,6 @@
               <td class="px-6 py-4 text-right text-green-400 font-semibold">100.000%</td>
             </tr>
             <tr>
-              <td class="px-6 py-4 text-gray-300">Random Forest</td>
-              <td class="px-4 py-4 text-right text-gray-300">99.92%</td>
-              <td class="px-4 py-4 text-right text-green-400 font-semibold">100.00%</td>
-              <td class="px-4 py-4 text-right text-gray-300">99.91%</td>
-              <td class="px-4 py-4 text-right text-gray-300">99.954%</td>
-              <td class="px-6 py-4 text-right text-gray-300">99.9999%</td>
-            </tr>
-            <tr>
               <td class="px-6 py-4 text-gray-400">SVM</td>
               <td class="px-4 py-4 text-right text-gray-400">90.49%</td>
               <td class="px-4 py-4 text-right text-gray-400">92.68%</td>
@@ -432,7 +425,7 @@
 
 <!-- ═══════════════════════════════════════════════
      PUBLICACIONES
-════════════════════════════════════════════════ -->
+════════════════════════════════════════════════ 
 <section id="publicaciones" class="py-24 bg-white dark:bg-neutral-950">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
@@ -444,7 +437,7 @@
 
     <div class="max-w-3xl mx-auto reveal">
       <div class="bg-white dark:bg-neutral-900 rounded-2xl border border-slate-200 dark:border-neutral-700 overflow-hidden shadow-xl hover:shadow-2xl transition-shadow">
-        <!-- Card header -->
+        <!-- Card header 
         <div class="bg-gradient-to-r from-indigo-600 to-violet-600 px-6 py-4">
           <div class="flex items-center justify-between">
             <span class="text-xs font-bold text-white/80 uppercase tracking-wider">CISTI 2026</span>
@@ -453,7 +446,7 @@
           <p class="text-white/60 text-xs mt-1">Conferencia Ibérica de Sistemas y Tecnologías de Información</p>
         </div>
 
-        <!-- Card body -->
+        Card body -->
         <div class="p-6">
           <h3 class="text-xl font-bold text-slate-900 dark:text-white leading-tight mb-3">
             AthenAI: Sistema Híbrido de Detección de Intrusiones Web Basado en Machine Learning Multicapa
@@ -465,7 +458,7 @@
               <p class="text-sm font-semibold text-slate-700 dark:text-gray-300">CIMAT — Centro de Investigación en Matemáticas</p>
               <p class="text-xs text-slate-400 dark:text-gray-500">Unidad Zacatecas, México</p>
             </div>
-          </div>
+          </div> -->
 
           <!-- Metric chips -->
           <div class="flex flex-wrap gap-2 mb-5">
@@ -477,7 +470,7 @@
 
           <!-- Abstract snippet -->
           <p class="text-sm text-slate-500 dark:text-gray-400 leading-relaxed mb-5">
-            Proponemos un sistema IDS multicapa que integra Nginx/ModSecurity, XGBoost+TF-IDF, Random Forest y DistilBERT con Isolation Forest en una arquitectura asíncrona cloud-native. La evaluación experimental sobre tres datasets públicos demuestra una accuracy del 99.96% con cero falsos negativos en el conjunto de prueba.
+            Proponemos un sistema IDS multicapa que integra Nginx/ModSecurity, XGBoost+TF-IDF, motor de políticas adaptativo y aprendizaje continuo en una arquitectura asíncrona cloud-native. La evaluación experimental sobre tres datasets públicos demuestra una accuracy del 99.96% con cero falsos negativos en el conjunto de prueba.
           </p>
 
           <!-- Pending validation -->
@@ -532,8 +525,8 @@
       <!-- Brand -->
       <div>
         <div class="flex items-center gap-2 mb-3">
-          <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center">
-            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center" style="width:32px;height:32px;flex-shrink:0">
+            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="20" height="20">
               <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.955 11.955 0 003 10c0 5.592 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.57-.598-3.75h-.152c-3.196 0-6.1-1.249-8.25-3.286z"/>
             </svg>
           </div>

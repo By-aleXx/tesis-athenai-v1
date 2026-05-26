@@ -10,6 +10,7 @@ Proporciona:
 """
 
 import os
+import hmac
 from dotenv import load_dotenv
 
 # Cargar variables de entorno desde .env
@@ -158,28 +159,46 @@ class AuthService:
         """Verifica password contra hash"""
         return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
     
+    # V-11: claims obligatorios para todos los tokens
+    JWT_ISSUER   = 'athenai'
+    JWT_AUDIENCE = 'athenai-dashboard'
+
     def generate_access_token(self, user_id: str, username: str, role: str) -> str:
-        """Genera un access token JWT"""
+        """Genera un access token JWT con iss, aud, jti, nbf."""
+        import secrets as _sec
+        now = datetime.now(timezone.utc)
         payload = {
+            'iss': self.JWT_ISSUER,
+            'aud': self.JWT_AUDIENCE,
+            'sub': user_id,
             'user_id': user_id,
             'username': username,
             'role': role,
             'type': 'access',
-            'exp': datetime.now(timezone.utc) + self.access_token_expiry,
-            'iat': datetime.now(timezone.utc)
+            'jti': _sec.token_urlsafe(16),
+            'iat': now,
+            'nbf': now,
+            'exp': now + self.access_token_expiry,
         }
         return jwt.encode(payload, self.jwt_secret, algorithm='HS256')
-    
+
     def generate_refresh_token(self, user_id: str) -> str:
-        """Genera un refresh token JWT"""
+        """Genera un refresh token JWT con iss, aud, jti, nbf."""
+        import secrets as _sec
+        now = datetime.now(timezone.utc)
         payload = {
+            'iss': self.JWT_ISSUER,
+            'aud': self.JWT_AUDIENCE,
+            'sub': user_id,
             'user_id': user_id,
             'type': 'refresh',
-            'exp': datetime.now(timezone.utc) + self.refresh_token_expiry,
-            'iat': datetime.now(timezone.utc)
+            'jti': _sec.token_urlsafe(16),
+            'iat': now,
+            'nbf': now,
+            'exp': now + self.refresh_token_expiry,
         }
         return jwt.encode(payload, self.jwt_refresh_secret, algorithm='HS256')
-    
+
     def verify_access_token(self, token: str, redis_client=None) -> dict:
         """
         Verifica un access token.
@@ -190,8 +209,11 @@ class AuthService:
             jwt.ExpiredSignatureError si expiró
             jwt.InvalidTokenError si es inválido o revocado
         """
-        import hashlib
-        payload = jwt.decode(token, self.jwt_secret, algorithms=['HS256'])
+        payload = jwt.decode(
+            token, self.jwt_secret, algorithms=['HS256'],
+            issuer=self.JWT_ISSUER, audience=self.JWT_AUDIENCE,
+            options={'require': ['exp', 'iat', 'nbf', 'iss', 'aud', 'sub', 'jti']}
+        )
 
         if payload.get('type') != 'access':
             raise jwt.InvalidTokenError('Token type mismatch')
@@ -199,35 +221,39 @@ class AuthService:
         # Verificar blacklist de tokens revocados (logout)
         if redis_client is not None:
             try:
-                jti = payload.get('jti') or hashlib.sha256(token.encode()).hexdigest()
+                jti = payload['jti']
                 if redis_client.exists(f'blacklisted_token:{jti}'):
                     raise jwt.InvalidTokenError('Token has been revoked')
             except jwt.InvalidTokenError:
                 raise
             except Exception:
-                pass  # Si Redis falla, no bloquear por ello
+                pass  # Si Redis falla, no bloquear
 
         return {
             'user_id': payload['user_id'],
             'username': payload['username'],
             'role': payload['role']
         }
-    
+
     def verify_refresh_token(self, token: str) -> str:
         """
         Verifica un refresh token.
-        
+
         Returns:
             user_id si es válido
         Raises:
             jwt.ExpiredSignatureError si expiró
             jwt.InvalidTokenError si es inválido
         """
-        payload = jwt.decode(token, self.jwt_refresh_secret, algorithms=['HS256'])
-        
+        payload = jwt.decode(
+            token, self.jwt_refresh_secret, algorithms=['HS256'],
+            issuer=self.JWT_ISSUER, audience=self.JWT_AUDIENCE,
+            options={'require': ['exp', 'iat', 'nbf', 'iss', 'aud', 'sub', 'jti']}
+        )
+
         if payload.get('type') != 'refresh':
             raise jwt.InvalidTokenError('Token type mismatch')
-        
+
         return payload['user_id']
     
     def register_user(self, username: str, password: str, email: str, role: str = 'viewer') -> dict:
@@ -246,11 +272,17 @@ class AuthService:
         Raises:
             ValueError si el username ya existe
         """
-        # Verificar si ya existe
+        # Verificar unicidad de username
         existing = self.get_user_by_username(username)
         if existing:
             raise ValueError(f'Username {username} already exists')
-        
+
+        # V-NEW-02: verificar unicidad de email (normalizado a minúsculas)
+        email = email.strip().lower()
+        existing_email = self.get_user_by_email(email)
+        if existing_email:
+            raise ValueError('Registration could not be completed')
+
         # Validar role
         if role not in ['admin', 'analyst', 'viewer']:
             raise ValueError(f'Invalid role: {role}')
@@ -347,25 +379,58 @@ class AuthService:
             logger.error(f"Error obteniendo usuario {user_id}: {e}")
             return None
     
+    def get_user_by_email(self, email: str) -> dict:
+        """Obtiene un usuario por email (para verificar unicidad)."""
+        normalized = email.strip().lower()
+        if self._offline_mode:
+            for u in self._mem_users_by_username.values():
+                if u.get('email', '').lower() == normalized:
+                    return u
+            return None
+        try:
+            response = self.dynamodb.scan(
+                TableName=self.table_name,
+                FilterExpression='email = :email',
+                ExpressionAttributeValues={':email': {'S': normalized}}
+            )
+            items = response.get('Items', [])
+            if not items:
+                return None
+            item = items[0]
+            return {'user_id': item['user_id']['S'], 'email': item['email']['S']}
+        except Exception as e:
+            logger.error(f"Error buscando usuario por email: {e}")
+            return None
+
     def login(self, username: str, password: str) -> dict:
         """
-        Login de usuario.
-        
+        Login de usuario con tiempo constante (V-NEW-01 timing oracle fix).
+
         Returns:
             dict con access_token, refresh_token, user
-        
+
         Raises:
             ValueError si credenciales inválidas
         """
+        import secrets as _sec
         user = self.get_user_by_username(username)
-        
-        if not user:
-            raise ValueError('Invalid credentials')
-        
-        if not user.get('is_active'):
-            raise ValueError('User is inactive')
-        
-        if not self.verify_password(password, user['password_hash']):
+
+        # V-NEW-01: siempre ejecutar bcrypt para igualar el coste de CPU
+        # independientemente de si el usuario existe o no.
+        if user is not None:
+            password_valid = self.verify_password(password, user['password_hash'])
+        else:
+            # Hash dummy: mismo coste, resultado siempre False
+            _dummy = bcrypt.hashpw(_sec.token_bytes(32), bcrypt.gensalt(rounds=12))
+            bcrypt.checkpw(password.encode('utf-8'), _dummy)
+            password_valid = False
+
+        # Comparación en tiempo constante del resultado final
+        auth_ok = hmac.compare_digest(
+            b'\x01' if (user and password_valid and user.get('is_active', True)) else b'\x00',
+            b'\x01'
+        )
+        if not auth_ok:
             raise ValueError('Invalid credentials')
         
         # Actualizar last_login

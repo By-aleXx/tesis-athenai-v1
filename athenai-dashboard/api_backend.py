@@ -21,6 +21,8 @@ import json
 import os
 import re
 import time
+import hmac
+import secrets
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -36,7 +38,9 @@ from validators import (
     validate_json,
     LoginSchema, RegisterSchema, RefreshTokenSchema,
     BlockIPSchema, WhitelistSchema,
-    TrafficSplitSchema, PolicyThresholdSchema
+    TrafficSplitSchema, PolicyThresholdSchema,
+    AlertsQuerySchema,
+    AnalyzeRequestSchema, MLPredictSchema,
 )
 
 # Importar AI Engine para predicciones ML
@@ -160,9 +164,30 @@ except Exception as e:
     system_health_monitor = None
 
 app = Flask(__name__)
-# CORS restringido a los orígenes definidos en variable de entorno
+# V-04: CORS restringido a los orígenes definidos en variable de entorno.
+# supports_credentials=False (default explícito) — ningún origen puede enviar cookies
+# de sesión cruzada; vary_header=True asegura que Vary: Origin se emite siempre.
 cors_origins = os.getenv('CORS_ORIGINS', 'http://localhost:3000').split(',')
-CORS(app, origins=cors_origins)
+CORS(app, origins=cors_origins, supports_credentials=False, vary_header=True)
+
+# V-08: solo confiar en X-Forwarded-For si hay un proxy de confianza delante.
+# TRUSTED_PROXY_HOPS=0 (default) → ignora XFF, usa socket peer siempre.
+# TRUSTED_PROXY_HOPS=1 → Nginx/ALB en frente; ProxyFix reescribe remote_addr.
+TRUSTED_PROXY_HOPS = int(os.getenv('TRUSTED_PROXY_HOPS', '0'))
+if TRUSTED_PROXY_HOPS > 0:
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=TRUSTED_PROXY_HOPS, x_proto=1, x_host=1)
+
+def _client_ip() -> str:
+    """IP real del cliente, inmune a spoofing de X-Forwarded-For."""
+    if TRUSTED_PROXY_HOPS > 0:
+        return request.remote_addr  # ProxyFix ya lo normalizó
+    return request.environ.get('REMOTE_ADDR', '0.0.0.0')
+
+# V-NEW-01: hash dummy pre-computado para igualar el coste de bcrypt
+# cuando el usuario no existe (evita timing oracle por early-return).
+import bcrypt as _bcrypt_mod
+_DUMMY_BCRYPT_HASH = _bcrypt_mod.hashpw(secrets.token_bytes(32), _bcrypt_mod.gensalt(rounds=12))
 
 # Swagger / OpenAPI Documentation → http://localhost:5000/apidocs/
 try:
@@ -213,19 +238,28 @@ except Exception as e:
 # ============================================
 
 # Gzip Compression (70% bandwidth reduction)
+# V-16: excluir endpoints de auth para evitar BREACH (compresión + secretos en respuesta)
+_AUTH_PATHS_NO_COMPRESS = {
+    '/api/auth/login', '/api/auth/refresh', '/api/auth/me', '/api/auth/register'
+}
 compress = Compress()
 compress.init_app(app)
 app.config['COMPRESS_MIMETYPES'] = [
-    'text/html',
-    'text/css',
-    'text/plain',
-    'application/json',
-    'application/javascript',
-    'text/xml',
-    'application/xml'
+    'text/html', 'text/css', 'text/plain',
+    'application/json', 'application/javascript',
+    'text/xml', 'application/xml'
 ]
-app.config['COMPRESS_LEVEL'] = 6  # Balance between speed and compression
-app.config['COMPRESS_MIN_SIZE'] = 500  # Only compress responses > 500 bytes
+app.config['COMPRESS_LEVEL'] = 6
+app.config['COMPRESS_MIN_SIZE'] = 500
+
+@app.after_request
+def _disable_compress_on_auth(response):
+    """V-16: desactivar compresión en endpoints que devuelven tokens JWT."""
+    if request.path in _AUTH_PATHS_NO_COMPRESS:
+        response.headers['Cache-Control'] = 'no-store'
+        response.direct_passthrough = False
+        response.headers.pop('Content-Encoding', None)
+    return response
 
 # Performance monitoring middleware
 @app.before_request
@@ -235,20 +269,15 @@ def before_request():
 
 @app.after_request
 def after_request(response):
-    """Add performance headers and log slow requests"""
-    # Calculate request duration
+    """Performance headers, cache headers y security headers."""
+    # Tiempo de respuesta
     if hasattr(g, 'start_time'):
         elapsed = time.time() - g.start_time
-        
-        # Add performance header
         response.headers['X-Response-Time'] = f"{elapsed * 1000:.2f}ms"
-        
-        # Log slow requests (> 500ms)
         if elapsed > 0.5:
-            print(f"⚠️ Slow request: {request.method} {request.path} took {elapsed:.2f}s")
-    
-    # Cache headers — written directly to avoid Werkzeug's OO API merging conflicts.
-    # NEVER cache error responses: a cached 403/404 would break assets permanently.
+            app.logger.warning(f"Slow request: {request.method} {request.path} took {elapsed:.2f}s")
+
+    # Cache headers — NUNCA cachear errores (un 403 cacheado rompe assets permanentemente)
     _path = request.path
     _static = _path.endswith(('.css', '.js', '.png', '.jpg', '.ico', '.svg', '.woff', '.woff2', '.ttf'))
     if response.status_code >= 400:
@@ -260,7 +289,30 @@ def after_request(response):
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
         response.headers['Pragma'] = 'no-cache'
         response.headers['Expires'] = '0'
-    
+
+    # V-02: security headers en todas las respuestas
+    response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    response.headers.setdefault('X-Frame-Options', 'DENY')
+    response.headers.setdefault('Referrer-Policy', 'no-referrer')
+    response.headers.setdefault('Permissions-Policy', 'geolocation=(), microphone=(), camera=()')
+    response.headers.setdefault('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload')
+    if response.mimetype == 'text/html':
+        response.headers.setdefault(
+            'Content-Security-Policy',
+            # cdn.tailwindcss.com y fonts.googleapis.com son dependencias CDN explícitas.
+            # Para producción: compilar Tailwind localmente y eliminar estas excepciones.
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "img-src 'self' data:; "
+            "connect-src 'self'; "
+            "frame-ancestors 'none'; "
+            "base-uri 'none'"
+        )
+    # Eliminar banner del framework
+    response.headers.pop('Server', None)
+
     return response
 
 # ============================================
@@ -306,6 +358,15 @@ def serve_assets(path):
     if _os.path.isdir(full) or path.endswith('/'):
         return jsonify({'error': 'Forbidden'}), 403
     return send_from_directory('assets', path)
+
+@app.route('/static/<path:path>')
+def serve_static(path):
+    """Serve locally-bundled static files (tailwind, etc.)"""
+    from flask import send_from_directory
+    import os as _os
+    if path.endswith('/'):
+        return jsonify({'error': 'Forbidden'}), 403
+    return send_from_directory('static', path)
 
 # Activar middleware de logging de tráfico (DESHABILITADO TEMPORALMENTE)
 # traffic_middleware = TrafficLoggingMiddleware(app)  # CAUSA ~700ms DE LATENCIA POR SYNC DB I/O
@@ -485,45 +546,28 @@ def get_home():
 
 @app.route('/api/health', methods=['GET'])
 def get_health():
-    """
-    Health check del sistema
-    ---
-    tags:
-      - System
-    summary: Verifica el estado de salud del backend y sus dependencias
-    responses:
-      200:
-        description: Estado de salud del sistema
-        schema:
-          type: object
-          properties:
-            status:
-              type: string
-              enum: [healthy, unhealthy]
-              example: healthy
-            timestamp:
-              type: string
-              example: "2026-03-09T15:00:00"
-            services:
-              type: object
-    """
+    """Health check mínimo público — no expone detalles internos (V-J)."""
+    return jsonify({'status': 'ok'}), 200
+
+
+@app.route('/api/health/full', methods=['GET'])
+@require_auth
+@require_role('admin')
+def get_health_full():
+    """Health check completo — solo accesible para administradores."""
     services = {
-        'ai_engine': brain is not None,
-        'auth': auth_service is not None,
-        'database': True,
-        'redis': ip_blocker is not None and rate_limiter is not None,
+        'ai_engine':    brain is not None,
+        'auth':         auth_service is not None,
+        'database':     True,
+        'redis':        ip_blocker is not None and rate_limiter is not None,
         'policy_engine': policy_engine is not None,
+        's3':           _s3_available,
     }
-
-    # S3: usar estado cacheado — no hacer llamada de red en cada health check
-    services['s3'] = _s3_available
-
     overall = 'healthy' if services['database'] else 'unhealthy'
-
     return jsonify({
         'status': overall,
         'timestamp': datetime.now().isoformat(),
-        'services': services
+        'services': services,
     }), 200
 
 
@@ -1384,23 +1428,56 @@ def auth_register():
     """Registro de nuevo usuario"""
     if not auth_service:
         return jsonify({'error': 'Auth service not available'}), 503
-    
+
+    # V-06: registro habilitado/deshabilitado por variable de entorno
+    if os.getenv('REGISTRATION_ENABLED', 'true').lower() != 'true':
+        return jsonify({'error': 'Registration is currently disabled.'}), 403
+
+    # V-06: rate-limit global de registro por IP (5 cuentas por hora)
+    _reg_ip = _client_ip()
+    _REG_KEY = f"rl:register:{_reg_ip}"
+    _REG_MAX = 5
+    _REG_TTL = 3600
+    _redis = rate_limiter.redis_client if rate_limiter else None
+    if _redis:
+        try:
+            count = int(_redis.get(_REG_KEY) or 0)
+            if count >= _REG_MAX:
+                ttl = max(_redis.ttl(_REG_KEY), _REG_TTL)
+                resp = jsonify({'error': 'Too many registration attempts. Try again later.'})
+                resp.headers['Retry-After'] = str(ttl)
+                return resp, 429
+        except Exception as _e:
+            app.logger.error(f"Register rate-limit check failed: {_e}")
+
     try:
         data = request.validated_data
-        
+
         user = auth_service.register_user(
             data['username'], data['password'], data['email'], data['role']
         )
-        
-        return jsonify({
-            'message': 'User registered successfully',
-            'user': user
-        }), 201
-    
+
+        # Incrementar contador de registros por IP
+        if _redis:
+            try:
+                pipe = _redis.pipeline()
+                pipe.incr(_REG_KEY)
+                pipe.expire(_REG_KEY, _REG_TTL)
+                pipe.execute()
+            except Exception:
+                pass
+
+        return jsonify({'message': 'User registered successfully', 'user': user}), 201
+
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        err = str(e)
+        # Mensaje genérico para evitar enumeración de usuarios/emails
+        if 'already exists' in err or 'could not be completed' in err:
+            return jsonify({'error': 'Registration could not be completed.'}), 409
+        return jsonify({'error': err}), 400
     except Exception as e:
-        return jsonify({'error': f'Registration failed: {str(e)}'}), 500
+        app.logger.error(f"Registration error: {e}")
+        return jsonify({'error': 'Registration failed'}), 500
 
 
 @app.route('/api/auth/login', methods=['POST'])
@@ -1451,64 +1528,68 @@ def auth_login():
     if not auth_service:
         return jsonify({'error': 'Auth service not available'}), 503
 
-    source_ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
+    # V-08 fix: IP real, sin confiar en XFF sin proxy validado
+    source_ip = _client_ip()
 
-    # Brute-force rate limiting: 5 failed attempts per IP within 15 minutes → 429
-    _LOGIN_KEY = f"login_attempts:{source_ip}"
-    _LOGIN_MAX = 5
-    _LOGIN_TTL = 900  # 15 minutes
+    data = request.validated_data
+    username = data['username']
+
+    # V-08 + dual rate-limit: clave por IP y por username (evita lockout asimétrico)
+    _LOGIN_TTL = 900  # 15 minutos
+    _IP_KEY   = f"rl:login:ip:{source_ip}"
+    _USER_KEY = f"rl:login:user:{username.lower()}"
+    _IP_MAX   = 20   # 20 intentos por IP en 15 min
+    _USER_MAX = 5    # 5 intentos por username en 15 min
     _redis = rate_limiter.redis_client if rate_limiter else None
     if _redis:
         try:
-            _attempts = _redis.get(_LOGIN_KEY)
-            if _attempts and int(_attempts) >= _LOGIN_MAX:
-                app.logger.warning(f"Brute-force threshold exceeded for IP {source_ip}")
-                resp = jsonify({'error': 'Too many login attempts. Try again in 15 minutes.'})
-                resp.headers['Retry-After'] = str(_LOGIN_TTL)
+            ip_count   = int(_redis.get(_IP_KEY)   or 0)
+            user_count = int(_redis.get(_USER_KEY) or 0)
+            if ip_count >= _IP_MAX or user_count >= _USER_MAX:
+                ttl = max(_redis.ttl(_IP_KEY), _redis.ttl(_USER_KEY), _LOGIN_TTL)
+                app.logger.warning(f"Brute-force threshold exceeded for IP {source_ip} / user {username}")
+                resp = jsonify({'error': 'Too many login attempts. Try again later.'})
+                resp.headers['Retry-After'] = str(ttl)
                 return resp, 429
         except Exception as _e:
             app.logger.error(f"Login rate-limit check failed: {_e}")
 
     try:
-        data = request.validated_data
-        username = data['username']
-
+        # V-NEW-01: delegar a auth_service que ya aplica bcrypt constante
         result = auth_service.login(username, data['password'])
 
-        # Login exitoso — resetear contador de intentos fallidos
+        # Login exitoso — resetear ambos contadores
         if _redis:
             try:
-                _redis.delete(_LOGIN_KEY)
+                _redis.delete(_IP_KEY, _USER_KEY)
             except Exception as _e:
-                app.logger.error(f"Failed to reset login attempts counter: {_e}")
+                app.logger.error(f"Failed to reset login counters: {_e}")
 
-        # Login exitoso — detectar impossible travel y registrar intento
-        if security_middleware and security_middleware.threat_detector:
-            td = security_middleware.threat_detector
+        # Detectar impossible travel y registrar intento exitoso
+        if security_mw and hasattr(security_mw, 'threat_detector') and security_mw.threat_detector:
+            td = security_mw.threat_detector
             user_id = result.get('user', {}).get('user_id', username)
-
             travel = td.check_impossible_travel(user_id, username, source_ip)
             if travel:
-                app.logger.warning(f"🌍 Impossible travel post-login: {username} from {source_ip}")
-
+                app.logger.warning(f"Impossible travel post-login: {username} from {source_ip}")
             td.record_login_attempt(source_ip, username, success=True)
 
         return jsonify(result), 200
 
-    except ValueError as e:
-        # Login fallido — incrementar contador brute-force
+    except ValueError:
+        # Login fallido — incrementar ambos contadores en pipeline atómico
         if _redis:
             try:
                 pipe = _redis.pipeline()
-                pipe.incr(_LOGIN_KEY)
-                pipe.expire(_LOGIN_KEY, _LOGIN_TTL)
+                pipe.incr(_IP_KEY);   pipe.expire(_IP_KEY,   _LOGIN_TTL)
+                pipe.incr(_USER_KEY); pipe.expire(_USER_KEY, _LOGIN_TTL)
                 pipe.execute()
             except Exception as _e:
-                app.logger.error(f"Failed to increment login attempts counter: {_e}")
-        # Login fallido — registrar para detectar credential stuffing
-        if security_middleware and security_middleware.threat_detector:
-            username = (request.validated_data or {}).get('username', 'unknown')
-            threat = security_middleware.threat_detector.record_login_attempt(
+                app.logger.error(f"Failed to increment login counters: {_e}")
+
+        # Registrar para detección de credential stuffing
+        if security_mw and hasattr(security_mw, 'threat_detector') and security_mw.threat_detector:
+            threat = security_mw.threat_detector.record_login_attempt(
                 source_ip, username, success=False
             )
             if threat:
@@ -1517,9 +1598,12 @@ def auth_login():
                     'message': threat['threat_type'] + ' detected — IP blocked',
                     'threat_type': threat['threat_type'],
                 }), 403
-        return jsonify({'error': str(e)}), 401
+
+        # Mensaje genérico — no revelar si el username existe o no
+        return jsonify({'error': 'Invalid credentials'}), 401
     except Exception as e:
-        return jsonify({'error': f'Login failed: {str(e)}'}), 500
+        app.logger.error(f"Login error: {e}")
+        return jsonify({'error': 'Login failed'}), 500
 
 
 @app.route('/api/auth/refresh', methods=['POST'])
@@ -1616,18 +1700,17 @@ def auth_logout():
 def get_alerts():
     """Alertas recientes desde DynamoDB con soporte de filtros y paginación"""
     try:
-        # Parse query parameters
+        # V-NEW-03: validar query params con Marshmallow (evita limit=-1 y valores arbitrarios)
+        from marshmallow import ValidationError as _VE
         try:
-            limit = min(int(request.args.get('limit', 50)), 200)
-        except (ValueError, TypeError):
-            limit = 50
-        try:
-            offset = max(int(request.args.get('offset', 0)), 0)
-        except (ValueError, TypeError):
-            offset = 0
-        severity_param = request.args.get('severity', '')
+            q = AlertsQuerySchema().load(request.args)
+        except _VE as _err:
+            return jsonify({'error': 'Invalid query parameters', 'messages': _err.messages}), 422
+        limit  = q['limit']
+        offset = q['offset']
+        severity_param = q['severity']
         severity_filter = [s.strip() for s in severity_param.split(',') if s.strip()] if severity_param else []
-        status_filter = request.args.get('status', '').strip()
+        status_filter = q['status'].strip()
 
         # Obtener alertas reales de DynamoDB
         if dynamodb_client:
@@ -1936,28 +2019,26 @@ def get_traffic_stats_endpoint():
 @app.route('/api/security/analyze', methods=['POST'])
 @require_auth
 @require_role('admin', 'analyst')
+@validate_json(AnalyzeRequestSchema)
 def analyze_request():
     """
     Analiza una petición HTTP y retorna la decisión de seguridad.
-    
-    Body:
+
+    Body (source_ip se ignora — siempre se usa la IP real del socket):
     {
         "payload": "...",
-        "source_ip": "...",
         "method": "GET",
         "path": "/api/users"
     }
     """
     try:
-        data = request.get_json()
-        
-        if not data:
-            return jsonify({'error': 'No data provided'}), 400
-        
-        payload = data.get('payload', '')
-        source_ip = data.get('source_ip', request.remote_addr)
-        method = data.get('method', 'GET')
-        path = data.get('path', '/')
+        data = request.validated_data
+
+        payload = data['payload']
+        # V-12a: siempre IP real del socket; V-12b: payload ya validado por schema.
+        source_ip = _client_ip()
+        method = data['method']
+        path = data['path']
         
         # 1. Predicción con AI Engine
         if brain and payload:
@@ -2231,14 +2312,44 @@ def get_ml_performance():
             with open(if_path, 'r') as f:
                 ifm = json.load(f)
             if_metrics = {
-                'precision':      round(ifm.get('precision', 0) * 100, 2),
-                'recall':         round(ifm.get('recall', 0) * 100, 2),
-                'f1_score':       round(ifm.get('f1_score', 0) * 100, 2),
+                'precision':       round(ifm.get('precision', 0) * 100, 2),
+                'recall':          round(ifm.get('recall', 0) * 100, 2),
+                'f1_score':        round(ifm.get('f1_score', 0) * 100, 2),
                 'precision_at_10': round(ifm.get('precision_at_10', 0) * 100, 2),
             }
             if_trained_at = ifm.get('timestamp')
     except (OSError, json.JSONDecodeError, KeyError) as e:
         app.logger.warning(f"Could not load Isolation Forest metrics: {e}")
+
+    rf_metrics = {}
+    try:
+        metrics_path = _base / 'metrics.json'
+        if metrics_path.exists():
+            with open(metrics_path, 'r') as f:
+                all_metrics = json.load(f)
+            rf = all_metrics.get('random_forest', {}).get('metrics', {})
+            rf_metrics = {
+                'accuracy':  round(rf.get('accuracy', 0) * 100, 2),
+                'precision': round(rf.get('precision', 0) * 100, 2),
+                'recall':    round(rf.get('recall', 0) * 100, 2),
+                'f1_score':  round(rf.get('f1_score', 0) * 100, 2),
+                'auc_roc':   round(rf.get('auc_roc', 0) * 100, 2),
+            }
+    except (OSError, json.JSONDecodeError, KeyError) as e:
+        app.logger.warning(f"Could not load Random Forest metrics: {e}")
+
+    cross_dataset = {}
+    try:
+        cd_path = _base / 'cross_dataset_results.json'
+        if cd_path.exists():
+            with open(cd_path, 'r') as f:
+                cd = json.load(f)
+            cross_dataset = {
+                'experiments': cd.get('experiments', []),
+                'summary': cd.get('summary', {}),
+            }
+    except (OSError, json.JSONDecodeError, KeyError) as e:
+        app.logger.warning(f"Could not load cross-dataset results: {e}")
 
     return jsonify({
         'xgboost': {
@@ -2250,7 +2361,12 @@ def get_ml_performance():
             'metrics': if_metrics,
             'trained_at': if_trained_at,
             'status': 'active' if if_metrics else 'unavailable',
-        }
+        },
+        'random_forest': {
+            'metrics': rf_metrics,
+            'status': 'experimental' if rf_metrics else 'unavailable',
+        },
+        'cross_dataset': cross_dataset,
     })
 
 
@@ -2321,34 +2437,29 @@ def list_ml_endpoints():
 @app.route('/api/ml/predict', methods=['POST'])
 @require_auth
 @require_role('admin', 'analyst')
+@validate_json(MLPredictSchema)
 def ml_predict():
-    """Realiza predicción usando un endpoint de ML"""
+    """Realiza predicción usando un endpoint de ML (allowlist de endpoints en MLPredictSchema)."""
     try:
         if not mock_sagemaker:
             return jsonify({'error': 'Mock SageMaker no disponible'}), 503
-        
-        data = request.json
-        
-        if not data or 'endpoint_name' not in data or 'features' not in data:
-            return jsonify({
-                'error': 'Se requiere endpoint_name y features'
-            }), 400
-        
+
+        data = request.validated_data
+        # V-12c: endpoint_name ya validado contra el allowlist por MLPredictSchema.
         endpoint_name = data['endpoint_name']
         features = data['features']
-        
-        # Hacer predicción
+
         prediction = mock_sagemaker.invoke_endpoint(
             endpoint_name=endpoint_name,
             data=features
         )
-        
+
         return jsonify({
             'endpoint': endpoint_name,
             'prediction': prediction.tolist() if hasattr(prediction, 'tolist') else list(prediction),
             'timestamp': datetime.now().isoformat()
         })
-        
+
     except ValueError as e:
         return jsonify({'error': str(e)}), 404
     except Exception as e:
@@ -2555,6 +2666,37 @@ def restore_backup():
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+# V-10: error handlers JSON — evitan que Flask devuelva HTML con banner del framework
+@app.errorhandler(400)
+def bad_request(_):
+    return jsonify({'error': 'Bad request'}), 400
+
+@app.errorhandler(401)
+def unauthorized(_):
+    return jsonify({'error': 'Unauthorized'}), 401
+
+@app.errorhandler(403)
+def forbidden(_):
+    return jsonify({'error': 'Forbidden'}), 403
+
+@app.errorhandler(404)
+def not_found(_):
+    return jsonify({'error': 'Not found'}), 404
+
+@app.errorhandler(405)
+def method_not_allowed(_):
+    return jsonify({'error': 'Method not allowed'}), 405
+
+@app.errorhandler(429)
+def too_many_requests(_):
+    return jsonify({'error': 'Too many requests'}), 429
+
+@app.errorhandler(500)
+def internal_error(exc):
+    app.logger.error(f"Internal server error: {exc}")
+    return jsonify({'error': 'Internal server error'}), 500
 
 
 if __name__ == '__main__':
