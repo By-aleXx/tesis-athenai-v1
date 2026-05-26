@@ -55,17 +55,21 @@ class SystemHealthMonitor:
     
     def _init_aws_clients(self):
         """Initialize AWS clients"""
+        from botocore.config import Config as BotocoreConfig
+        _fast_cfg = BotocoreConfig(connect_timeout=0.5, read_timeout=1, retries={'max_attempts': 0})
+
         if self.use_localstack:
             endpoint_url = os.environ['AWS_ENDPOINT_URL']
             aws_config = {
                 'endpoint_url': endpoint_url,
                 'region_name': os.getenv('AWS_REGION', 'us-east-1'),
                 'aws_access_key_id': os.environ['AWS_ACCESS_KEY_ID'],
-                'aws_secret_access_key': os.environ['AWS_SECRET_ACCESS_KEY']
+                'aws_secret_access_key': os.environ['AWS_SECRET_ACCESS_KEY'],
+                'config': _fast_cfg,
             }
         else:
-            aws_config = {'region_name': os.getenv('AWS_REGION', 'us-east-1')}
-        
+            aws_config = {'region_name': os.getenv('AWS_REGION', 'us-east-1'), 'config': _fast_cfg}
+
         try:
             self.dynamodb = boto3.client('dynamodb', **aws_config)
             self.s3 = boto3.client('s3', **aws_config)

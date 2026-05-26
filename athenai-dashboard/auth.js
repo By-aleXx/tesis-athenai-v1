@@ -299,6 +299,8 @@ if (window.location.pathname !== '/login.html' && !window.location.pathname.ends
             if (!valid) {
                 window.location.href = 'login.html';
             }
+        }).catch(function(err) {
+            console.error('verifyToken error:', err);
         });
     }
 }

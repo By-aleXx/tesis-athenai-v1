@@ -6,8 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AthenAI - Security Dashboard</title>
 
-    <!-- Tailwind CSS v3.4.1 pinneado (V-03). TODO producción: compilar localmente -->
-    <script src="https://cdn.tailwindcss.com/3.4.1" crossorigin="anonymous"></script>
+    <!-- Tailwind CSS v3.4.1 — CDN con fallback local -->
+    <script src="https://cdn.tailwindcss.com/3.4.1" crossorigin="anonymous"
+        onerror="var s=document.createElement('script');s.src='/static/tailwind.min.js';document.head.appendChild(s);">
+    </script>
     <script>
         tailwind.config = {
             darkMode: 'class'
@@ -149,7 +151,7 @@
             if (root && root.querySelector('.animate-spin')) {
                 _showError('El dashboard tardó demasiado en cargar.\n\nPosibles causas:\n• Un script no se descargó\n• Sesión expirada\n\nIntenta recargar o cerrar sesión.');
             }
-        }, 12000);
+        }, 60000);
     </script>
     <div id="root">
         <div
