@@ -29,6 +29,15 @@ from dotenv import load_dotenv
 # Cargar variables de entorno desde .env al inicio
 load_dotenv()
 
+
+def _safe_parse_date(s):
+    """Safely parse an ISO date string, returning None on any error."""
+    try:
+        return datetime.fromisoformat(s).date() if s else None
+    except (ValueError, TypeError):
+        return None
+
+
 # Importar middleware y base de datos
 from middleware import TrafficLoggingMiddleware
 from database import init_db, get_traffic_logs, get_traffic_stats
@@ -102,10 +111,6 @@ except Exception as e:
         def decorator(f):
             return f
         return decorator
-
-    ip_blocker = None
-    rate_limiter = None
-    alert_system = None
 
 # Importar Evidence Store, DynamoDB Client y Secrets Manager
 try:
@@ -217,6 +222,9 @@ init_db()
 
 # Registrar Traffic Logging Middleware (registra TODO el tráfico en la BD)
 traffic_logger = TrafficLoggingMiddleware(app)
+
+# Exponer AI Brain al middleware via app.config
+app.config['AI_BRAIN'] = brain
 
 # Registrar Security Middleware con ML Detection asíncrona
 try:
@@ -378,21 +386,6 @@ def serve_static(path):
 # Las rutas /api/auth/* están registradas por auth_service más abajo (líneas ~1150+)
 # auth.py legacy fue desactivado — auth_service.py es el único sistema de auth
 
-# Activar Security Middleware (IP Blocker + Rate Limiter + ML)
-try:
-    from security_middleware import SecurityMiddleware
-    security_middleware = SecurityMiddleware(
-        app=app,
-        ip_blocker=ip_blocker,
-        rate_limiter=rate_limiter,
-        evidence_store=evidence_store,
-        mock_sagemaker=mock_sagemaker,
-        ai_engine=brain  # 📚 Continuous Learning integration
-    )
-    print("✅ Security Middleware activado (IP Blocker + Rate Limiter + ML Detection + Continuous Learning)")
-except Exception as e:
-    print(f"⚠️  No se pudo activar Security Middleware: {e}")
-    security_middleware = None
 
 
 # Activar Observability Middleware (CloudWatch Logs + Metrics)
@@ -677,7 +670,7 @@ def get_traffic():
     try:
         from database import SessionLocal
         from models import TrafficLog
-        from sqlalchemy import func
+        from sqlalchemy import func, case
 
         now = datetime.utcnow()  # timestamps en BD están en UTC
         cutoff = now - timedelta(hours=24)
@@ -688,7 +681,7 @@ def get_traffic():
                 db.query(
                     func.strftime('%Y-%m-%d %H', TrafficLog.timestamp).label('day_hour'),
                     func.count(TrafficLog.id).label('total'),
-                    func.sum(TrafficLog.is_test_attack).label('threats')
+                    func.sum(case((TrafficLog.ai_prediction == 'malicious', 1), else_=0)).label('threats')
                 )
                 .filter(TrafficLog.timestamp >= cutoff)
                 .group_by(func.strftime('%Y-%m-%d %H', TrafficLog.timestamp))
@@ -738,7 +731,7 @@ def get_attacks():
         try:
             logs = (
                 db.query(TrafficLog.path, TrafficLog.query_params, TrafficLog.body)
-                .filter(TrafficLog.is_test_attack == True)
+                .filter(TrafficLog.ai_prediction == 'malicious')
                 .all()
             )
         finally:
@@ -1005,8 +998,8 @@ def get_ip_stats():
         
         # Count today's blocks
         today = datetime.now().date()
-        blocked_today = sum(1 for ip in blocked_ips 
-                           if datetime.fromisoformat(ip.get('blocked_at', '')).date() == today)
+        blocked_today = sum(1 for ip in blocked_ips
+                           if _safe_parse_date(ip.get('blocked_at', '')) == today)
         
         # Count auto vs manual blocks
         auto_blocks = sum(1 for ip in blocked_ips if ip.get('auto_blocked', False))
@@ -1227,7 +1220,7 @@ def get_threats_summary():
         })
 
     except Exception as e:
-        logger.error(f"Error in threats/summary: {e}")
+        app.logger.error(f"Error in threats/summary: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -1762,7 +1755,7 @@ def get_alerts():
             total = len(alerts)
             alerts = alerts[offset:offset + limit]
 
-            if total > 0 or dynamodb_client:
+            if total > 0:
                 return jsonify({'alerts': alerts, 'total': total, 'limit': limit, 'offset': offset})
 
         # Si no hay alertas reales, usar datos de ejemplo
@@ -1853,16 +1846,23 @@ def get_traffic_logs_endpoint():
         exclude_localhost = request.args.get('exclude_localhost', 'false').lower() == 'true'
         
         # Obtener logs (filtrando localhost en la consulta SQL si está activado)
-        logs = get_traffic_logs(
-            limit=limit,
-            offset=offset,
-            is_test_attack=is_test_attack,
-            source_ip=source_ip,
-            exclude_source_ip='127.0.0.1' if exclude_localhost else None
-        )
-        
-        # Convertir a dict
-        logs_data = [log.to_dict() for log in logs]
+        from database import SessionLocal
+        from models import TrafficLog as _TL
+
+        _db = SessionLocal()
+        try:
+            _q = _db.query(_TL)
+            if is_test_attack is not None:
+                _q = _q.filter(_TL.is_test_attack == is_test_attack)
+            if source_ip:
+                _q = _q.filter(_TL.source_ip == source_ip)
+            if exclude_localhost:
+                _q = _q.filter(_TL.source_ip != '127.0.0.1')
+            total_count = _q.count()
+            logs = _q.order_by(_TL.timestamp.desc()).limit(limit).offset(offset).all()
+            logs_data = [log.to_dict() for log in logs]
+        finally:
+            _db.close()
         
         # 🧠 AGREGAR PREDICCIONES DE IA A CADA LOG
         for log in logs_data:
@@ -1893,7 +1893,7 @@ def get_traffic_logs_endpoint():
                 log['risk_score'] = 95.0 if log.get('is_test_attack') else 5.0
         
         return jsonify({
-            'total': len(logs_data),
+            'total': total_count,
             'limit': limit,
             'offset': offset,
             'logs': logs_data
@@ -2498,8 +2498,8 @@ def predict_threat():
                 data=features
             )
             
-            is_threat = bool(prediction[0])
             confidence = float(prediction[0])
+            is_threat = confidence > 0.5
             
             return jsonify({
                 'is_threat': is_threat,

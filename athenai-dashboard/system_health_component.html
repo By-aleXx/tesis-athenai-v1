@@ -1,0 +1,213 @@
+<!-- 
+System Health Panel Component
+Add this to index.html after the Recent Alerts section (around line 377)
+-->
+
+{/* System Health Panel - Enhanced */}
+<div
+    className="bg-white dark:bg-black rounded-xl shadow-sm border border-slate-200 dark:border-neutral-700 dark:border-neutral-800 overflow-hidden mt-6">
+    <div
+        className="p-6 border-b border-slate-200 dark:border-neutral-700 dark:border-neutral-800 flex justify-between items-center">
+        <div>
+            <h3 className="font-semibold text-slate-800 dark:text-white">System Health</h3>
+            <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">Real-time infrastructure metrics</p>
+        </div>
+        <div className="flex items-center space-x-2">
+            <span className="text-xs text-slate-500 dark:text-gray-400">Auto-refresh: 5s</span>
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+        </div>
+    </div>
+
+    <div className="p-6">
+        {/* OS Metrics */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            {/* CPU */}
+            <div className="bg-slate-50 dark:bg-neutral-900 rounded-lg p-4">
+                <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm font-medium text-slate-700 dark:text-gray-200">CPU Usage</span>
+                    <span className={`text-xs px-2 py-1 rounded-full ${ health?.cpu?.status==='healthy'
+                        ? 'bg-green-100 text-green-700' : health?.cpu?.status==='warning'
+                        ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700' }`}>
+                        {health?.cpu?.status || 'loading'}
+                    </span>
+                </div>
+                <div className="flex items-end space-x-2 mb-2">
+                    <span className="text-2xl font-bold text-slate-800 dark:text-white">
+                        {health?.cpu?.usage_percent || 0}%
+                    </span>
+                    <span className="text-xs text-slate-500 dark:text-gray-400 mb-1">
+                        {health?.cpu?.cores || 0} cores
+                    </span>
+                </div>
+                <div className="w-full bg-slate-200 dark:bg-neutral-800 rounded-full h-2">
+                    <div className={`h-2 rounded-full transition-all ${ (health?.cpu?.usage_percent || 0)>= 90 ?
+                        'bg-red-500' :
+                        (health?.cpu?.usage_percent || 0) >= 70 ? 'bg-yellow-500' :
+                        'bg-green-500'
+                        }`}
+                        style={{width: `${health?.cpu?.usage_percent || 0}%`}}
+                        ></div>
+                </div>
+            </div>
+
+            {/* Memory */}
+            <div className="bg-slate-50 dark:bg-neutral-900 rounded-lg p-4">
+                <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm font-medium text-slate-700 dark:text-gray-200">Memory</span>
+                    <span className={`text-xs px-2 py-1 rounded-full ${ health?.memory?.status==='healthy'
+                        ? 'bg-green-100 text-green-700' : health?.memory?.status==='warning'
+                        ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700' }`}>
+                        {health?.memory?.status || 'loading'}
+                    </span>
+                </div>
+                <div className="flex items-end space-x-2 mb-2">
+                    <span className="text-2xl font-bold text-slate-800 dark:text-white">
+                        {health?.memory?.usage_percent || 0}%
+                    </span>
+                    <span className="text-xs text-slate-500 dark:text-gray-400 mb-1">
+                        {health?.memory?.used_mb || 0} / {health?.memory?.total_mb || 0} MB
+                    </span>
+                </div>
+                <div className="w-full bg-slate-200 dark:bg-neutral-800 rounded-full h-2">
+                    <div className={`h-2 rounded-full transition-all ${ (health?.memory?.usage_percent || 0)>= 95 ?
+                        'bg-red-500' :
+                        (health?.memory?.usage_percent || 0) >= 80 ? 'bg-yellow-500' :
+                        'bg-green-500'
+                        }`}
+                        style={{width: `${health?.memory?.usage_percent || 0}%`}}
+                        ></div>
+                </div>
+            </div>
+
+            {/* Disk */}
+            <div className="bg-slate-50 dark:bg-neutral-900 rounded-lg p-4">
+                <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm font-medium text-slate-700 dark:text-gray-200">Disk Space</span>
+                    <span className={`text-xs px-2 py-1 rounded-full ${ health?.disk?.status==='healthy'
+                        ? 'bg-green-100 text-green-700' : health?.disk?.status==='warning'
+                        ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700' }`}>
+                        {health?.disk?.status || 'loading'}
+                    </span>
+                </div>
+                <div className="flex items-end space-x-2 mb-2">
+                    <span className="text-2xl font-bold text-slate-800 dark:text-white">
+                        {health?.disk?.usage_percent || 0}%
+                    </span>
+                    <span className="text-xs text-slate-500 dark:text-gray-400 mb-1">
+                        {health?.disk?.free_gb || 0} GB free
+                    </span>
+                </div>
+                <div className="w-full bg-slate-200 dark:bg-neutral-800 rounded-full h-2">
+                    <div className={`h-2 rounded-full transition-all ${ (health?.disk?.usage_percent || 0)>= 95 ?
+                        'bg-red-500' :
+                        (health?.disk?.usage_percent || 0) >= 80 ? 'bg-yellow-500' :
+                        'bg-green-500'
+                        }`}
+                        style={{width: `${health?.disk?.usage_percent || 0}%`}}
+                        ></div>
+                </div>
+            </div>
+        </div>
+
+        {/* Services Status */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Redis */}
+            <div
+                className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 rounded-lg p-4 border border-red-200 dark:border-red-800">
+                <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-semibold text-red-900 dark:text-red-200">Redis</span>
+                    <div className={`w-3 h-3 rounded-full ${health?.redis?.connected ? 'bg-green-500' : 'bg-red-500'
+                        }`}></div>
+                </div>
+                <div className="space-y-1 text-xs text-red-800 dark:text-red-300">
+                    <div className="flex justify-between">
+                        <span>Hit Rate:</span>
+                        <span className="font-medium">{health?.redis?.hit_rate_percent || 0}%</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span>Clients:</span>
+                        <span className="font-medium">{health?.redis?.connected_clients || 0}</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span>Memory:</span>
+                        <span className="font-medium">{health?.redis?.memory_used_mb || 0} MB</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* DynamoDB */}
+            <div
+                className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
+                <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-semibold text-blue-900 dark:text-blue-200">DynamoDB</span>
+                    <div className={`w-3 h-3 rounded-full ${health?.dynamodb?.status==='healthy' ? 'bg-green-500'
+                        : 'bg-yellow-500' }`}></div>
+                </div>
+                <div className="space-y-1 text-xs text-blue-800 dark:text-blue-300">
+                    <div className="flex justify-between">
+                        <span>Tables:</span>
+                        <span className="font-medium">{health?.dynamodb?.total_tables || 0}</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span>Status:</span>
+                        <span className="font-medium">{health?.dynamodb?.status || 'unknown'}</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* S3 */}
+            <div
+                className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 rounded-lg p-4 border border-orange-200 dark:border-orange-800">
+                <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-semibold text-orange-900 dark:text-orange-200">S3</span>
+                    <div className={`w-3 h-3 rounded-full ${health?.s3?.status==='healthy' ? 'bg-green-500'
+                        : 'bg-yellow-500' }`}></div>
+                </div>
+                <div className="space-y-1 text-xs text-orange-800 dark:text-orange-300">
+                    <div className="flex justify-between">
+                        <span>Buckets:</span>
+                        <span className="font-medium">{Object.keys(health?.s3?.buckets || {}).length}</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span>Status:</span>
+                        <span className="font-medium">{health?.s3?.status || 'unknown'}</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* API */}
+            <div
+                className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-lg p-4 border border-green-200 dark:border-green-800">
+                <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-semibold text-green-900 dark:text-green-200">API</span>
+                    <div className={`w-3 h-3 rounded-full ${health?.api?.status==='healthy' ? 'bg-green-500'
+                        : 'bg-red-500' }`}></div>
+                </div>
+                <div className="space-y-1 text-xs text-green-800 dark:text-green-300">
+                    <div className="flex justify-between">
+                        <span>Uptime:</span>
+                        <span className="font-medium">{health?.api?.uptime_formatted || '0m'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span>Req/min:</span>
+                        <span className="font-medium">{health?.api?.requests_per_minute || 0}</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span>Avg Latency:</span>
+                        <span className="font-medium">{health?.api?.avg_response_time_ms || 0}ms</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 
+JavaScript to fetch system health data
+Add this inside the Dashboard component, after the existing useAPI calls
+-->
+
+<script>
+    // Add this to the Dashboard component's useAPI calls (around line 238-242)
+    const { data: health } = useAPI('/system-health', 5000); // Refresh every 5 seconds
+</script>

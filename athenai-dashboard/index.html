@@ -517,8 +517,6 @@
                     // IP Management state
                     const [ipSearchQuery, setIpSearchQuery] = useState('');
                     const [ipFilterType, setIpFilterType] = useState('all');
-                    const [showBlockModal, setShowBlockModal] = useState(false);
-                    const [showWhitelistModal, setShowWhitelistModal] = useState(false);
 
                     // ML Training Logs modal
                     const [showTrainingLogsModal, setShowTrainingLogsModal] = useState(false);
@@ -719,9 +717,9 @@
                                         </button>
 
                                         {/* Status Indicator */}
-                                        <div className={`flex items-center space-x-2 px-2 sm:px-4 py-2 rounded-lg ${health?.status === 'healthy' ? 'bg-green-50 dark:bg-green-900' : 'bg-red-50 dark:bg-red-900'}`}>
-                                            <div className={`w-2 h-2 rounded-full animate-pulse-green ${health?.status === 'healthy' ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                                            <span className={`hidden xs:inline text-sm font-medium ${health?.status === 'healthy' ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>{health?.status === 'healthy' ? 'Online' : 'Offline'}</span>
+                                        <div className={`flex items-center space-x-2 px-2 sm:px-4 py-2 rounded-lg ${(health?.status === 'healthy' || health?.status === 'ok') ? 'bg-green-50 dark:bg-green-900' : 'bg-red-50 dark:bg-red-900'}`}>
+                                            <div className={`w-2 h-2 rounded-full animate-pulse-green ${(health?.status === 'healthy' || health?.status === 'ok') ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                                            <span className={`hidden sm:inline text-sm font-medium ${(health?.status === 'healthy' || health?.status === 'ok') ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>{(health?.status === 'healthy' || health?.status === 'ok') ? 'Online' : 'Offline'}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -1736,7 +1734,7 @@
                                                         <h3 className="font-semibold">Tasa de Bloqueo</h3>
                                                         <Icons.Shield />
                                                     </div>
-                                                    <p className="text-3xl font-bold">98.7%</p>
+                                                    <p className="text-3xl font-bold">{stats?.block_rate != null ? stats.block_rate.toFixed(1) + '%' : '—'}</p>
                                                     <p className="text-sm opacity-80 mt-1">Amenazas bloqueadas</p>
                                                 </div>
                                                 <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl p-6 text-white shadow-lg hover-lift">
@@ -1963,7 +1961,7 @@
                                                                     const res = await authService.fetch(`${API_BASE_URL}/blocked-ips`, {
                                                                         method: 'POST',
                                                                         headers: { 'Content-Type': 'application/json' },
-                                                                        body: JSON.stringify({ ip, reason: 'Manual block', permanent: false })
+                                                                        body: JSON.stringify({ ip, reason: 'Manual block', duration: 3600 })
                                                                     });
                                                                     if (res.ok) {
                                                                         showToast(`IP ${ip} bloqueada correctamente`);
@@ -2201,7 +2199,7 @@
                                                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                                                         <div>
                                                             <h3 className="text-lg font-semibold text-green-900 dark:text-green-100 flex items-center gap-2">
-                                                                <Icons.TrendingUp />
+                                                                <Icons.Activity />
                                                                 Model B is Performing Better!
                                                             </h3>
                                                             <p className="text-sm text-green-700 dark:text-green-300 mt-1">

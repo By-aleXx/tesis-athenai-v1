@@ -14,7 +14,9 @@ SECRET_KEY = _JWT_SECRET
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 
-# Mock user database (passwords stored as bcrypt hashes)
+# SECURITY WARNING: This module (auth.py) is DEPRECATED — use auth_service.py instead.
+# These hashes correspond to trivial passwords (admin123, analyst123, viewer123).
+# Do NOT use in production. This dict exists only for legacy compatibility.
 USERS = {
     "admin": {
         "password_hash": "$2b$12$zCcueiFpNKMJswfA5o8IUeQPBIUSClaHKhouYTFzJlk/0ESXA4oGa",
@@ -35,6 +37,12 @@ USERS = {
 
 class AuthManager:
     def __init__(self, secret_key=SECRET_KEY):
+        import warnings
+        warnings.warn(
+            "auth.py AuthManager is deprecated and uses hardcoded credentials. Use auth_service.py instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.secret_key = secret_key
 
     def verify_password(self, username, password):

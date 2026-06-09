@@ -112,32 +112,32 @@ class AuthService:
             logger.info(f"✅ Tabla {self.table_name} creada exitosamente")
     
     def _create_default_admin(self):
-        """Crea un usuario admin por defecto si no existe"""
-        try:
-            # Verificar si ya existe
-            existing = self.get_user_by_username('admin')
-            if existing:
-                logger.info("✅ Usuario admin ya existe")
-                return
-            
-            # Crear admin
-            self.register_user(
-                username='admin',
-                password='admin123',
-                email='admin@athenai.com',
-                role='admin'
-            )
-            logger.info("✅ Usuario admin por defecto creado correctamente")
-        except Exception as e:
-            logger.error(f"Error creando usuario admin: {e}")
-    
-    def _create_default_users_offline(self):
-        """Populates in-memory store with default users when DynamoDB is unavailable."""
+        """Crea usuarios por defecto (admin, analyst, viewer) si no existen."""
         defaults = [
             ('admin',   os.getenv('ADMIN_PASSWORD',   'admin123'),   'admin@athenai.com',   'admin'),
             ('analyst', os.getenv('ANALYST_PASSWORD', 'analyst123'), 'analyst@athenai.com', 'analyst'),
             ('viewer',  os.getenv('VIEWER_PASSWORD',  'viewer123'),  'viewer@athenai.com',  'viewer'),
         ]
+        for username, password, email, role in defaults:
+            try:
+                if not self.get_user_by_username(username):
+                    self.register_user(username=username, password=password, email=email, role=role)
+                    logger.info(f"✅ Usuario '{username}' creado correctamente")
+                else:
+                    logger.info(f"✅ Usuario '{username}' ya existe")
+            except Exception as e:
+                logger.error(f"Error creando usuario '{username}': {e}")
+    
+    def _create_default_users_offline(self):
+        """Populates in-memory store with default users when DynamoDB is unavailable."""
+        # Dev defaults — override via env vars in production
+        defaults = [
+            ('admin',   os.getenv('ADMIN_PASSWORD',   'admin123'),   'admin@athenai.com',   'admin'),
+            ('analyst', os.getenv('ANALYST_PASSWORD', 'analyst123'), 'analyst@athenai.com', 'analyst'),
+            ('viewer',  os.getenv('VIEWER_PASSWORD',  'viewer123'),  'viewer@athenai.com',  'viewer'),
+        ]
+        if not any(os.getenv(v) for v in ['ADMIN_PASSWORD', 'ANALYST_PASSWORD', 'VIEWER_PASSWORD']):
+            logger.warning("Using default dev passwords (admin123/analyst123/viewer123). Set ADMIN_PASSWORD, ANALYST_PASSWORD, VIEWER_PASSWORD env vars before production.")
         for username, password, email, role in defaults:
             uid = str(uuid.uuid4())
             now = datetime.now(timezone.utc).isoformat()
@@ -388,12 +388,19 @@ class AuthService:
                     return u
             return None
         try:
-            response = self.dynamodb.scan(
-                TableName=self.table_name,
-                FilterExpression='email = :email',
-                ExpressionAttributeValues={':email': {'S': normalized}}
-            )
-            items = response.get('Items', [])
+            items = []
+            kwargs = {
+                'TableName': self.table_name,
+                'FilterExpression': 'email = :email',
+                'ExpressionAttributeValues': {':email': {'S': normalized}},
+            }
+            while True:
+                response = self.dynamodb.scan(**kwargs)
+                items.extend(response.get('Items', []))
+                last_key = response.get('LastEvaluatedKey')
+                if not last_key:
+                    break
+                kwargs['ExclusiveStartKey'] = last_key
             if not items:
                 return None
             item = items[0]

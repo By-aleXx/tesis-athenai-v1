@@ -1,0 +1,167 @@
+🧠 Inicializando AI Engine...
+  ⚠️ Redis caching disabled: Timeout connecting to server
+  📦 Cargando XGBoost desde C:\Users\jcond\OneDrive\Escritorio\prubas AthenAI\athenai-dashboard\models\xgboost.pkl...
+  ✓ XGBoost cargado
+  📦 Cargando Feature Engineer desde C:\Users\jcond\OneDrive\Escritorio\prubas AthenAI\athenai-dashboard\models\feature_engineer.pkl...
+  ✓ Feature Engineer cargado desde pickle
+  🔄 Inicializando Continuous Learning...
+  ✓ Continuous Learning habilitado
+✅ AI Engine inicializado correctamente
+
+🧠 AI Engine cargado exitosamente
+Threshold calibrado cargado: 0.8333
+⚖️ Policy Engine y Response Actions cargados exitosamente
+⚠️  No se pudieron cargar componentes de seguridad: Timeout connecting to server
+🔐 IAM Manager cargado exitosamente
+⚠️  Encryption service not available
+📦 Evidence Store, DynamoDB Client y Secrets Manager cargados exitosamente
+⚠️  No se pudo cargar Mock SageMaker: Connect timeout on endpoint URL: "http://127.0.0.1:4566/"
+🔐 Auth Service cargado exitosamente (usuario admin creado)
+📊 CloudWatch Logger y Metrics Collector cargados exitosamente
+🏥 System Health Monitor cargado exitosamente
+📖 Swagger UI disponible en: http://localhost:5000/apidocs/
+📦 Inicializando base de datos en: C:\Users\jcond\OneDrive\Escritorio\prubas AthenAI\athenai-dashboard\traffic_logs.db
+✅ Base de datos inicializada correctamente
+✅ Traffic Logging Middleware activado
+🎯 IP de pruebas autorizadas: 100.108.127.116
+🔒 Security Middleware con ML Detection asíncrona activado
+✅ Security Middleware activado (IP Blocker + Rate Limiter + ML Detection + Continuous Learning)
+✅ Observability Middleware activado (CloudWatch Logs + Metrics)
+================================================================================
+ATHENAI API BACKEND
+================================================================================
+
+🚀 Servidor iniciando en 0.0.0.0:5000 (acepta conexiones de cualquier IP)
+📊 Modo: LocalStack
+🪣 S3 Bucket: athenai-alertas
+
+🌐 Accesible desde:
+  • http://localhost:5000 (conexión local)
+  • http://127.0.0.1:5000 (loopback)
+  • http://<IP-de-esta-máquina>:5000 (red local/externa)
+
+📡 Endpoints disponibles:
+  GET /api/home          - Información general del sistema
+  GET /api/stats         - Estadísticas generales
+  GET /api/traffic       - Datos de tráfico
+  GET /api/attacks       - Tipos de ataques
+  GET /api/alerts        - Alertas recientes
+  GET /api/health        - Estado del sistema
+  GET /api/model-info    - Información de modelos ML
+  GET /api/traffic-logs  - Logs de tráfico HTTP (con filtros)
+  GET /api/traffic-stats - Estadísticas de tráfico HTTP
+  POST /api/security/analyze - Analizar petición con Policy Engine
+  GET /api/security/stats    - Estadísticas de seguridad
+
+🤖 ML Endpoints (Mock SageMaker):
+  GET /api/ml/models           - Listar modelos
+  GET /api/ml/models/<name>    - Info de modelo
+  GET /api/ml/training-jobs    - Listar training jobs
+  GET /api/ml/endpoints        - Listar endpoints
+  POST /api/ml/predict         - Predicción genérica
+  POST /api/ml/predict/threat  - Predicción de amenazas
+  GET /api/ml/stats            - Estadísticas ML
+
+🔒 Sistema de logging de tráfico activado
+⚖️ Policy Engine y Response Actions activados
+🎯 IP de pruebas autorizadas: 100.108.127.116
+
+================================================================================
+
+ * Serving Flask app 'api_backend'
+ * Debug mode: off
+🔧 Extrayendo features...
+  ✓ Features TF-IDF: 3000
+  ✓ Features manuales: 37
+  ✓ Total features: 3037
+🔧 Extrayendo features...
+  ✓ Features TF-IDF: 3000
+  ✓ Features manuales: 37
+  ✓ Total features: 3037
+🔧 Extrayendo features...
+  ✓ Features TF-IDF: 3000
+  ✓ Features manuales: 37
+  ✓ Total features: 3037
+🔧 Extrayendo features...
+  ✓ Features TF-IDF: 3000
+  ✓ Features manuales: 37
+  ✓ Total features: 3037
+🔧 Extrayendo features...
+  ✓ Features TF-IDF: 3000
+  ✓ Features manuales: 37
+  ✓ Total features: 3037
+🔧 Extrayendo features...
+  ✓ Features TF-IDF: 3000
+  ✓ Features manuales: 37
+  ✓ Total features: 3037
+🔧 Extrayendo features...
+  ✓ Features TF-IDF: 3000
+  ✓ Features manuales: 37
+  ✓ Total features: 3037
+🔧 Extrayendo features...
+  ✓ Features TF-IDF: 3000
+  ✓ Features manuales: 37
+  ✓ Total features: 3037
+🔧 Extrayendo features...
+  ✓ Features TF-IDF: 3000
+  ✓ Features manuales: 37
+  ✓ Total features: 3037
+🔧 Extrayendo features...
+  ✓ Features TF-IDF: 3000
+  ✓ Features manuales: 37
+  ✓ Total features: 3037
+🔧 Extrayendo features...
+  ✓ Features TF-IDF: 3000
+  ✓ Features manuales: 37
+  ✓ Total features: 3037
+🔧 Extrayendo features...
+  ✓ Features TF-IDF: 3000
+  ✓ Features manuales: 37
+  ✓ Total features: 3037
+🔧 Extrayendo features...
+  ✓ Features TF-IDF: 3000
+  ✓ Features manuales: 37
+  ✓ Total features: 3037
+🔧 Extrayendo features...
+  ✓ Features TF-IDF: 3000
+  ✓ Features manuales: 37
+  ✓ Total features: 3037
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"
+Error obteniendo alertas de S3: Could not connect to the endpoint URL: "http://127.0.0.1:4566/athenai-alertas?list-type=2&prefix=alerts%2F&max-keys=50&encoding-type=url"

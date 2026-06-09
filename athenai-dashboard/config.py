@@ -94,7 +94,7 @@ ALERT_EMAIL_FROM = "security@athenai.com"
 ALERT_EMAIL_TO = ["admin@athenai.com"]
 
 # SMS Configuration (SNS)
-ALERT_SMS_PHONE_NUMBERS = ["+1234567890"]
+ALERT_SMS_PHONE_NUMBERS = [p.strip() for p in os.getenv('ALERT_SMS_PHONE_NUMBERS', '').split(',') if p.strip()]
 
 # Slack Configuration
 ALERT_SLACK_WEBHOOK_URL = os.getenv('SLACK_WEBHOOK_URL', '')

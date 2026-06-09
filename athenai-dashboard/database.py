@@ -14,12 +14,17 @@ DB_PATH = os.path.join(os.path.dirname(__file__), 'traffic_logs.db')
 DATABASE_URL = f'sqlite:///{DB_PATH}'
 
 # Crear engine con configuración para SQLite
+def _set_wal(dbapi_conn, _):
+    dbapi_conn.execute('PRAGMA journal_mode=WAL')  # permite escrituras concurrentes
+
 engine = create_engine(
     DATABASE_URL,
-    connect_args={'check_same_thread': False},  # Necesario para SQLite con Flask
+    connect_args={'check_same_thread': False},
     poolclass=StaticPool,
-    echo=False  # Cambiar a True para debug SQL
+    echo=False
 )
+from sqlalchemy import event
+event.listen(engine, 'connect', _set_wal)
 
 # Crear session factory
 SessionLocal = scoped_session(sessionmaker(autocommit=False, autoflush=False, bind=engine))
@@ -49,9 +54,10 @@ def get_db():
         db.close()
 
 
-def save_traffic_log(source_ip, method, path, headers=None, body=None, 
+def save_traffic_log(source_ip, method, path, headers=None, body=None,
                      query_params=None, user_agent=None, is_test_attack=False,
-                     content_type=None, content_length=None):
+                     content_type=None, content_length=None,
+                     risk_score=None, ai_prediction=None):
     """
     Guarda un log de tráfico en la base de datos
     
@@ -82,7 +88,9 @@ def save_traffic_log(source_ip, method, path, headers=None, body=None,
             user_agent=user_agent,
             is_test_attack=is_test_attack,
             content_type=content_type,
-            content_length=content_length
+            content_length=content_length,
+            risk_score=risk_score,
+            ai_prediction=ai_prediction,
         )
         db.add(log)
         db.commit()

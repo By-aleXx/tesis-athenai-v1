@@ -213,7 +213,8 @@ class RateLimiter:
             
             # Actualizar estadísticas
             self.stats['total_requests'] += 1
-            self.stats['unique_ips'].add(identifier)
+            if len(self.stats['unique_ips']) < 10000:
+                self.stats['unique_ips'].add(identifier)
             
             if not is_allowed:
                 self.stats['rate_limited_requests'] += 1

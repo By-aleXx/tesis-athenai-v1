@@ -45,7 +45,8 @@ class SystemHealthMonitor:
                 host=redis_host,
                 port=redis_port,
                 decode_responses=True,
-                socket_connect_timeout=2
+                socket_connect_timeout=3,
+                socket_timeout=3,
             )
             self.redis_client.ping()
             logger.info(f"✅ Redis connected: {redis_host}:{redis_port}")
@@ -59,12 +60,12 @@ class SystemHealthMonitor:
         _fast_cfg = BotocoreConfig(connect_timeout=0.5, read_timeout=1, retries={'max_attempts': 0})
 
         if self.use_localstack:
-            endpoint_url = os.environ['AWS_ENDPOINT_URL']
+            endpoint_url = os.getenv('AWS_ENDPOINT_URL', 'http://localhost:4566')
             aws_config = {
                 'endpoint_url': endpoint_url,
                 'region_name': os.getenv('AWS_REGION', 'us-east-1'),
-                'aws_access_key_id': os.environ['AWS_ACCESS_KEY_ID'],
-                'aws_secret_access_key': os.environ['AWS_SECRET_ACCESS_KEY'],
+                'aws_access_key_id': os.getenv('AWS_ACCESS_KEY_ID', 'test'),
+                'aws_secret_access_key': os.getenv('AWS_SECRET_ACCESS_KEY', 'test'),
                 'config': _fast_cfg,
             }
         else:
@@ -159,9 +160,12 @@ class SystemHealthMonitor:
     
     def get_redis_metrics(self) -> Dict[str, Any]:
         """Get Redis metrics"""
-        if not self.redis_client:
+        if self.redis_client is None:
+            logger.warning("Redis client is None — attempting reconnect")
+            self._init_redis()
+        if self.redis_client is None:
             return {"status": "disconnected", "connected": False}
-        
+
         try:
             info = self.redis_client.info()
             stats = self.redis_client.info('stats')
@@ -236,7 +240,7 @@ class SystemHealthMonitor:
                 objects = response.get('Contents', [])
                 
                 total_size = sum(obj.get('Size', 0) for obj in objects)
-                last_modified = max([obj.get('LastModified') for obj in objects], default=None)
+                last_modified = max((obj['LastModified'] for obj in objects if obj.get('LastModified')), default=None)
                 
                 buckets_data[bucket_name] = {
                     "objects_count": len(objects),

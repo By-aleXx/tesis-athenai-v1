@@ -1,0 +1,318 @@
+<!-- 
+IP Management Component
+Add this to index.html as a new tab section
+
+INTEGRATION INSTRUCTIONS:
+1. Add 'ip-management' to the tab state
+2. Add sidebar button for IP Management
+3. Add this component in the tab content area
+-->
+
+{/* IP Management Tab */}
+{tab === 'ip-management' && (
+<>
+    {/* Statistics Cards */}
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <div
+            className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 rounded-xl p-6 border border-red-200 dark:border-red-800">
+            <div className="flex items-center justify-between">
+                <div>
+                    <p className="text-sm font-medium text-red-900 dark:text-red-200 mb-1">Total Blocked</p>
+                    <h3 className="text-3xl font-bold text-red-700 dark:text-red-300">{ipStats?.total_blocked || 0}</h3>
+                    <p className="text-xs text-red-600 dark:text-red-400 mt-1">All time</p>
+                </div>
+                <div className="p-3 bg-red-200 dark:bg-red-900 rounded-lg">
+                    <svg className="w-8 h-8 text-red-700 dark:text-red-300" fill="none" stroke="currentColor"
+                        viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                            d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        <div
+            className="bg-gradient-to-br from-yellow-50 to-yellow-100 dark:from-yellow-900/20 dark:to-yellow-800/20 rounded-xl p-6 border border-yellow-200 dark:border-yellow-800">
+            <div className="flex items-center justify-between">
+                <div>
+                    <p className="text-sm font-medium text-yellow-900 dark:text-yellow-200 mb-1">Blocked Today</p>
+                    <h3 className="text-3xl font-bold text-yellow-700 dark:text-yellow-300">{ipStats?.blocked_today ||
+                        0}</h3>
+                    <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">Last 24 hours</p>
+                </div>
+                <div className="p-3 bg-yellow-200 dark:bg-yellow-900 rounded-lg">
+                    <svg className="w-8 h-8 text-yellow-700 dark:text-yellow-300" fill="none" stroke="currentColor"
+                        viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        <div
+            className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-xl p-6 border border-green-200 dark:border-green-800">
+            <div className="flex items-center justify-between">
+                <div>
+                    <p className="text-sm font-medium text-green-900 dark:text-green-200 mb-1">Whitelisted</p>
+                    <h3 className="text-3xl font-bold text-green-700 dark:text-green-300">{ipStats?.total_whitelisted ||
+                        0}</h3>
+                    <p className="text-xs text-green-600 dark:text-green-400 mt-1">Trusted IPs</p>
+                </div>
+                <div className="p-3 bg-green-200 dark:bg-green-900 rounded-lg">
+                    <svg className="w-8 h-8 text-green-700 dark:text-green-300" fill="none" stroke="currentColor"
+                        viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                            d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                    </svg>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {/* Blocked IPs Table */}
+    <div
+        className="bg-white dark:bg-black rounded-xl shadow-sm border border-slate-200 dark:border-neutral-700 dark:border-neutral-800 overflow-hidden mb-6">
+        <div
+            className="p-6 border-b border-slate-200 dark:border-neutral-700 dark:border-neutral-800 flex justify-between items-center">
+            <div>
+                <h3 className="font-semibold text-slate-800 dark:text-white">Blocked IPs</h3>
+                <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">Showing {blockedIPs?.blocked_ips?.length
+                    || 0} blocked addresses</p>
+            </div>
+            <div className="flex space-x-2">
+                <button onClick={()=> setShowBlockModal(true)}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium
+                    transition-colors flex items-center space-x-2"
+                    >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    <span>Block IP</span>
+                </button>
+                <button onClick={refetchBlockedIPs}
+                    className="p-2 hover:bg-slate-100 dark:hover:bg-neutral-800 rounded-lg transition-colors">
+                    <Icons.Refresh />
+                </button>
+            </div>
+        </div>
+
+        {/* Search and Filter */}
+        <div className="p-4 bg-slate-50 dark:bg-neutral-900 border-b border-slate-200 dark:border-neutral-800">
+            <div className="flex space-x-4">
+                <input type="text" placeholder="Search IP address..." value={ipSearchQuery} onChange={(e)=>
+                setIpSearchQuery(e.target.value)}
+                className="flex-1 px-4 py-2 bg-white dark:bg-black border border-slate-300 dark:border-neutral-700
+                rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 dark:text-white"
+                />
+                <select value={ipFilterType} onChange={(e)=> setIpFilterType(e.target.value)}
+                    className="px-4 py-2 bg-white dark:bg-black border border-slate-300 dark:border-neutral-700
+                    rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 dark:text-white"
+                    >
+                    <option value="all">All Blocks</option>
+                    <option value="auto">Auto Blocked</option>
+                    <option value="manual">Manual Blocks</option>
+                    <option value="permanent">Permanent</option>
+                </select>
+            </div>
+        </div>
+
+        {/* Table */}
+        <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+                <thead className="bg-slate-50 dark:bg-neutral-900 text-slate-600 dark:text-gray-200 uppercase text-xs">
+                    <tr>
+                        <th className="px-6 py-3">IP Address</th>
+                        <th className="px-6 py-3">Reason</th>
+                        <th className="px-6 py-3">Blocked At</th>
+                        <th className="px-6 py-3">Type</th>
+                        <th className="px-6 py-3">TTL</th>
+                        <th className="px-6 py-3">Actions</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 dark:divide-neutral-800">
+                    {filteredBlockedIPs?.map((ip, i) => (
+                    <tr key={i} className="bg-white hover:bg-slate-50 dark:bg-neutral-900 dark:hover:bg-neutral-800">
+                        <td className="px-6 py-4 font-mono text-slate-800 dark:text-white font-medium">{ip.ip}</td>
+                        <td className="px-6 py-4 text-slate-600 dark:text-gray-300">{ip.reason}</td>
+                        <td className="px-6 py-4 text-slate-500 dark:text-gray-400">{new
+                            Date(ip.blocked_at).toLocaleString()}</td>
+                        <td className="px-6 py-4">
+                            <span className={`px-2 py-1 rounded-full text-xs ${ ip.auto_blocked
+                                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+                                : 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300' }`}>
+                                {ip.auto_blocked ? 'Auto' : 'Manual'}
+                            </span>
+                        </td>
+                        <td className="px-6 py-4">
+                            <span className={`px-2 py-1 rounded-full text-xs ${ ip.permanent
+                                ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
+                                : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300' }`}>
+                                {ip.permanent ? 'Permanent' : ip.ttl_seconds ? `${Math.floor(ip.ttl_seconds / 60)}m` :
+                                'N/A'}
+                            </span>
+                        </td>
+                        <td className="px-6 py-4">
+                            <button onClick={()=> handleUnblockIP(ip.ip)}
+                                className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs
+                                font-medium transition-colors"
+                                >
+                                Unblock
+                            </button>
+                        </td>
+                    </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {/* Whitelist Table */}
+    <div
+        className="bg-white dark:bg-black rounded-xl shadow-sm border border-slate-200 dark:border-neutral-700 dark:border-neutral-800 overflow-hidden">
+        <div
+            className="p-6 border-b border-slate-200 dark:border-neutral-700 dark:border-neutral-800 flex justify-between items-center">
+            <div>
+                <h3 className="font-semibold text-slate-800 dark:text-white">Whitelist</h3>
+                <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">Showing {whitelist?.whitelist?.length ||
+                    0} trusted IPs</p>
+            </div>
+            <div className="flex space-x-2">
+                <button onClick={()=> setShowWhitelistModal(true)}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium
+                    transition-colors flex items-center space-x-2"
+                    >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    <span>Add IP</span>
+                </button>
+                <button onClick={refetchWhitelist}
+                    className="p-2 hover:bg-slate-100 dark:hover:bg-neutral-800 rounded-lg transition-colors">
+                    <Icons.Refresh />
+                </button>
+            </div>
+        </div>
+
+        <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+                <thead className="bg-slate-50 dark:bg-neutral-900 text-slate-600 dark:text-gray-200 uppercase text-xs">
+                    <tr>
+                        <th className="px-6 py-3">IP Address</th>
+                        <th className="px-6 py-3">Reason</th>
+                        <th className="px-6 py-3">Added At</th>
+                        <th className="px-6 py-3">Actions</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 dark:divide-neutral-800">
+                    {whitelist?.whitelist?.map((ip, i) => (
+                    <tr key={i} className="bg-white hover:bg-slate-50 dark:bg-neutral-900 dark:hover:bg-neutral-800">
+                        <td className="px-6 py-4 font-mono text-slate-800 dark:text-white font-medium">{ip.ip}</td>
+                        <td className="px-6 py-4 text-slate-600 dark:text-gray-300">{ip.reason}</td>
+                        <td className="px-6 py-4 text-slate-500 dark:text-gray-400">{new
+                            Date(ip.added_at).toLocaleString()}</td>
+                        <td className="px-6 py-4">
+                            <button onClick={()=> handleRemoveFromWhitelist(ip.ip)}
+                                className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-medium
+                                transition-colors"
+                                >
+                                Remove
+                            </button>
+                        </td>
+                    </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</>
+)}
+
+<!-- 
+JavaScript hooks and handlers to add to the Dashboard component
+-->
+
+<script>
+    // Add these to the Dashboard component (around line 238-245)
+
+    // IP Management state
+    const [ipSearchQuery, setIpSearchQuery] = useState('');
+    const [ipFilterType, setIpFilterType] = useState('all');
+    const [showBlockModal, setShowBlockModal] = useState(false);
+    const [showWhitelistModal, setShowWhitelistModal] = useState(false);
+
+    // API hooks for IP management
+    const { data: blockedIPs, refetch: refetchBlockedIPs } = useAPI('/blocked-ips', 10000);
+    const { data: whitelist, refetch: refetchWhitelist } = useAPI('/whitelist', 10000);
+    const { data: ipStats } = useAPI('/ip-stats', 10000);
+
+    // Filter blocked IPs based on search and filter
+    const filteredBlockedIPs = blockedIPs?.blocked_ips?.filter(ip => {
+        const matchesSearch = ip.ip.toLowerCase().includes(ipSearchQuery.toLowerCase());
+        const matchesFilter =
+            ipFilterType === 'all' ? true :
+                ipFilterType === 'auto' ? ip.auto_blocked :
+                    ipFilterType === 'manual' ? !ip.auto_blocked :
+                        ipFilterType === 'permanent' ? ip.permanent : true;
+        return matchesSearch && matchesFilter;
+    }) || [];
+
+    // Unblock IP handler
+    const handleUnblockIP = async (ip) => {
+        if (!confirm(`Are you sure you want to unblock ${ip}?`)) return;
+
+        try {
+            const res = await authService.fetch(`${API_BASE_URL}/blocked-ips/${ip}`, {
+                method: 'DELETE'
+            });
+
+            if (res.ok) {
+                alert(`IP ${ip} unblocked successfully`);
+                refetchBlockedIPs();
+                refetchIPStats();
+            } else {
+                alert('Failed to unblock IP');
+            }
+        } catch (e) {
+            console.error('Error unblocking IP:', e);
+            alert('Error unblocking IP');
+        }
+    };
+
+    // Remove from whitelist handler
+    const handleRemoveFromWhitelist = async (ip) => {
+        if (!confirm(`Are you sure you want to remove ${ip} from whitelist?`)) return;
+
+        try {
+            const res = await authService.fetch(`${API_BASE_URL}/whitelist/${ip}`, {
+                method: 'DELETE'
+            });
+
+            if (res.ok) {
+                alert(`IP ${ip} removed from whitelist`);
+                refetchWhitelist();
+                refetchIPStats();
+            } else {
+                alert('Failed to remove IP from whitelist');
+            }
+        } catch (e) {
+            console.error('Error removing from whitelist:', e);
+            alert('Error removing from whitelist');
+        }
+    };
+</script>
+
+<!-- 
+Sidebar button to add (around line 260-280)
+-->
+<button onClick={()=> setTab('ip-management')}
+    className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-all ${tab === 'ip-management' ?
+    'bg-indigo-600 text-white shadow-lg' : 'text-slate-600 dark:text-gray-300 hover:bg-slate-100
+    dark:hover:bg-neutral-800'}`}
+    >
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+    </svg>
+    <span className="font-medium">IP Management</span>
+</button>

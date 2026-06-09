@@ -60,11 +60,17 @@ class AIEngine:
     """
     
     _instance = None
-    
+    _instance_lock = None  # initialized below after threading import
+
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(AIEngine, cls).__new__(cls)
-            cls._instance._initialized = False
+            import threading as _t
+            if cls._instance_lock is None:
+                cls._instance_lock = _t.Lock()
+            with cls._instance_lock:
+                if cls._instance is None:
+                    cls._instance = super(AIEngine, cls).__new__(cls)
+                    cls._instance._initialized = False
         return cls._instance
     
     def __init__(self, enable_continuous_learning: bool = True, enable_ab_testing: bool = True):
@@ -100,9 +106,11 @@ class AIEngine:
         self.drift_check_interval = 50  # Ejecutar drift detection cada 50 requests
         
         # Caché en memoria para predicciones (mucho más rápido que Redis)
+        import threading as _threading
         from collections import OrderedDict
         self.prediction_cache = OrderedDict()
         self.max_cache_size = 10000  # Cachear hasta 10k predicciones únicas
+        self._cache_lock = _threading.RLock()
         
         # A/B Testing components
         self.ab_testing_enabled = enable_ab_testing and AB_TESTING_AVAILABLE
@@ -208,14 +216,14 @@ class AIEngine:
             # ========================================
             
             # Calcular hash del payload para caché
-            payload_hash = hashlib.md5(payload.encode()).hexdigest()
+            payload_hash = hashlib.sha256(payload.encode()).hexdigest()
             
             # Verificar caché en memoria (ULTRA RÁPIDO)
-            if payload_hash in self.prediction_cache:
-                self.cache_stats['hits'] += 1
-                return self.prediction_cache[payload_hash]
-            
-            self.cache_stats['misses'] += 1
+            with self._cache_lock:
+                if payload_hash in self.prediction_cache:
+                    self.cache_stats['hits'] += 1
+                    return self.prediction_cache[payload_hash]
+                self.cache_stats['misses'] += 1
             
             payload_lower = payload.lower()
             
@@ -346,12 +354,11 @@ class AIEngine:
             
             result = (label, confidence)
             
-            # Guardar en caché LRU
-            self.prediction_cache[payload_hash] = result
-            
-            # Si el caché es muy grande, eliminar entradas antiguas (LRU)
-            if len(self.prediction_cache) > self.max_cache_size:
-                self.prediction_cache.popitem(last=False)  # Eliminar el más antiguo
+            # Guardar en caché LRU (thread-safe)
+            with self._cache_lock:
+                self.prediction_cache[payload_hash] = result
+                if len(self.prediction_cache) > self.max_cache_size:
+                    self.prediction_cache.popitem(last=False)
             
             return result
             
@@ -568,7 +575,10 @@ class AIEngine:
             )
             
             # Verificar si es dato envenenado
-            is_poisoned, reason = self.poisoning_detector.is_poisoned(X[0])
+            if self.poisoning_detector is not None:
+                is_poisoned, reason = self.poisoning_detector.is_poisoned(X[0])
+            else:
+                is_poisoned, reason = False, None
             
             if is_poisoned:
                 print(f"⚠️ Poisoned data filtered: {reason}")
@@ -597,8 +607,8 @@ class AIEngine:
             try:
                 cl_stats = self.continuous_learner.get_stats()
                 info['continuous_learning_stats'] = cl_stats
-            except:
-                pass
+            except Exception as _e:
+                logger.debug(f"Could not get continuous learning stats: {_e}")
         
         return info
     

@@ -3,7 +3,7 @@ AthenAI - Database Models
 Modelos SQLAlchemy para el sistema de logging de tráfico
 """
 
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, JSON
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, JSON, Float
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
 
@@ -38,7 +38,11 @@ class TrafficLog(Base):
     
     # Marcador especial para pruebas de seguridad
     is_test_attack = Column(Boolean, default=False, nullable=False, index=True)
-    
+
+    # Clasificación ML
+    risk_score = Column(Float, nullable=True, index=True)
+    ai_prediction = Column(String(20), nullable=True, index=True)
+
     # Metadata adicional
     content_type = Column(String(100), nullable=True)
     content_length = Column(Integer, nullable=True)
@@ -61,6 +65,8 @@ class TrafficLog(Base):
             'body': self.body,
             'response_status': self.response_status,
             'is_test_attack': self.is_test_attack,
+            'risk_score': self.risk_score,
+            'ai_prediction': self.ai_prediction,
             'content_type': self.content_type,
             'content_length': self.content_length
         }

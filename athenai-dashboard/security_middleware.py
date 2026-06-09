@@ -67,7 +67,9 @@ class SecurityMiddleware:
         self.ml_predictor = ml_predictor if ML_ASYNC_AVAILABLE else None
 
         # Tracking de tráfico por IP para ML
+        import threading as _threading
         self.traffic_stats = {}  # {ip: {request_count, error_count, response_times, ...}}
+        self._stats_lock = _threading.Lock()
         
         if ai_engine is not None and ML_ASYNC_AVAILABLE:
             logger.info("🤖 ML Detection asíncrona HABILITADA (ThreadPoolExecutor x4 workers)")

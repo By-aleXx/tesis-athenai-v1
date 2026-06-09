@@ -4,7 +4,7 @@ Middleware Flask para interceptar y registrar todo el tráfico HTTP
 con marcado especial para pruebas de seguridad autorizadas
 """
 
-from flask import request, g
+from flask import request, g, current_app
 from functools import wraps
 import json
 import os
@@ -39,22 +39,18 @@ AUTHORIZED_TEST_IP = os.getenv('AUTHORIZED_TEST_IP', '')
 
 def get_client_ip():
     """
-    Obtiene la IP real del cliente, considerando proxies y load balancers
-    
-    Returns:
-        str: IP del cliente
+    Obtiene la IP real del cliente, solo confiando en X-Forwarded-For desde proxies conocidos.
     """
-    # Intentar obtener IP de headers de proxy
-    if request.headers.get('X-Forwarded-For'):
-        # X-Forwarded-For puede contener múltiples IPs, la primera es el cliente real
-        ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
-    elif request.headers.get('X-Real-IP'):
-        ip = request.headers.get('X-Real-IP')
-    else:
-        # Fallback a la IP directa
-        ip = request.remote_addr
-    
-    return ip
+    trusted_proxies = {'127.0.0.1', '::1'}
+    remote = request.remote_addr
+    if remote in trusted_proxies:
+        xff = request.headers.get('X-Forwarded-For', '')
+        if xff:
+            return xff.split(',')[0].strip()
+        real_ip = request.headers.get('X-Real-IP', '')
+        if real_ip:
+            return real_ip
+    return remote
 
 
 def is_test_attack(ip):
@@ -139,9 +135,23 @@ def _log_request(response=None):
         if response:
             try:
                 response_status = response.status_code
-            except:
+            except AttributeError:
                 pass
         
+        # Clasificar con ML si el engine está disponible
+        risk_score = None
+        ai_prediction = None
+        try:
+            brain = current_app.config.get('AI_BRAIN')
+            if brain:
+                payload = query_params or body or path or ''
+                if payload:
+                    label, confidence = brain.predict(payload)
+                    ai_prediction = label
+                    risk_score = float(confidence)
+        except Exception as _ml_e:
+            print(f"[middleware] ML prediction skipped: {_ml_e}")
+
         # Guardar en la base de datos
         save_traffic_log(
             source_ip=client_ip,
@@ -153,7 +163,9 @@ def _log_request(response=None):
             user_agent=user_agent,
             is_test_attack=is_test,
             content_type=content_type,
-            content_length=request.content_length
+            content_length=request.content_length,
+            risk_score=risk_score,
+            ai_prediction=ai_prediction,
         )
         
     except Exception as e:
