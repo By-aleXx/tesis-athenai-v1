@@ -6,18 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AthenAI - Login</title>
 
-    <!-- Tailwind CSS v3.4.1 — CDN con fallback local -->
-    <script src="https://cdn.tailwindcss.com/3.4.1" crossorigin="anonymous"
-        onerror="var s=document.createElement('script');s.src='/static/tailwind.min.js';document.head.appendChild(s);">
-    </script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class'
-        }
-    </script>
-
-    <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="/static/tailwind.min.js"></script>
+    <!-- i18n (debe cargarse antes del resto del JS) -->
+    <script src="/static/translations.js"></script>
+    <script>tailwind.config = { darkMode: 'class' }</script>
 
     <style>
         * {
@@ -195,30 +187,39 @@
 
 <body>
     <div class="login-card">
+        <!-- Botón de idioma -->
+        <div style="position:absolute; top:1rem; right:1rem;">
+            <button id="langToggleBtn" onclick="toggleLang()"
+                style="padding:0.35rem 0.75rem; border:1px solid #d1d5db; border-radius:8px; font-size:0.75rem; font-weight:600; background:white; color:#6b7280; cursor:pointer;">
+            </button>
+        </div>
+
         <div class="logo">🛡️ AthenAI</div>
-        <div class="subtitle">Security Intelligence Dashboard</div>
+        <div class="subtitle" data-i18n="login.subtitle">Panel de Inteligencia de Seguridad</div>
 
         <div id="errorMessage" class="error-message" style="display:none"></div>
 
         <form id="loginForm">
             <div style="margin-bottom: 1.25rem;">
-                <label for="username" style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: #374151;">
-                    Username
+                <label for="username" style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: #374151;" data-i18n="login.username">
+                    Usuario
                 </label>
-                <input type="text" id="username" name="username" class="input-field" placeholder="Enter your username"
+                <input type="text" id="username" name="username" class="input-field"
+                    data-i18n-ph="login.username.ph" placeholder="Ingresa tu usuario"
                     required autocomplete="username">
             </div>
 
             <div style="margin-bottom: 1.5rem;">
-                <label for="password" style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: #374151;">
-                    Password
+                <label for="password" style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: #374151;" data-i18n="login.password">
+                    Contraseña
                 </label>
                 <input type="password" id="password" name="password" class="input-field"
-                    placeholder="Enter your password" required autocomplete="current-password">
+                    data-i18n-ph="login.password.ph" placeholder="Ingresa tu contraseña"
+                    required autocomplete="current-password">
             </div>
 
-            <button type="submit" id="loginBtn" class="btn-primary">
-                Sign In
+            <button type="submit" id="loginBtn" class="btn-primary" data-i18n="login.submit">
+                Iniciar sesión
             </button>
         </form>
 
@@ -230,6 +231,20 @@
         const loginForm = document.getElementById('loginForm');
         const loginBtn = document.getElementById('loginBtn');
         const errorMessage = document.getElementById('errorMessage');
+
+        // i18n: inicializar botón y textos
+        function applyI18n() {
+            if (!window.i18n) return;
+            window.i18n._applyDOM();
+            const btn = document.getElementById('langToggleBtn');
+            if (btn) btn.textContent = window.i18n.t('lang.toggle');
+        }
+        function toggleLang() {
+            const next = window.i18n.lang === 'es' ? 'en' : 'es';
+            window.i18n.setLang(next);
+            applyI18n();
+        }
+        applyI18n();
 
         // Check if already logged in
         const accessToken = localStorage.getItem('access_token');
@@ -268,7 +283,7 @@
 
             // Disable button and show loading
             loginBtn.disabled = true;
-            loginBtn.innerHTML = 'Signing In<span class="spinner"></span>';
+            loginBtn.innerHTML = window.i18n.t('login.submit.loading') + '<span class="spinner"></span>';
             errorMessage.classList.remove('show');
 
             try {
@@ -290,7 +305,7 @@
                     localStorage.setItem('user', JSON.stringify({ username, role, user_id }));
 
                     // Show success and redirect
-                    loginBtn.innerHTML = '✓ Success!';
+                    loginBtn.innerHTML = window.i18n.t('login.submit.success');
                     loginBtn.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
 
                     setTimeout(() => {
@@ -298,15 +313,15 @@
                     }, 500);
                 } else {
                     // Show error
-                    showError(data.error || 'Invalid credentials');
+                    showError(window.i18n.t('login.error.credentials'));
                     loginBtn.disabled = false;
-                    loginBtn.innerHTML = 'Sign In';
+                    loginBtn.innerHTML = window.i18n.t('login.submit');
                 }
             } catch (error) {
                 console.error('Login error:', error);
-                showError('Error de conexión. Verifica que el servidor esté activo.');
+                showError(window.i18n.t('login.error.connection'));
                 loginBtn.disabled = false;
-                loginBtn.innerHTML = 'Sign In';
+                loginBtn.innerHTML = window.i18n.t('login.submit');
             }
         });
 

@@ -5,7 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AthenAI — Detección de Intrusiones Web con IA</title>
   <!-- Tailwind CSS v3.4.1 — servido localmente con fallback CDN -->
-  <script src="/static/tailwind.min.js" onerror="this.onerror=null;this.src='https://cdn.tailwindcss.com/3.4.1'"></script>
+  <script src="/static/tailwind.min.js"></script>
+  <!-- i18n (debe cargarse antes del resto del JS) -->
+  <script src="/static/translations.js"></script>
   <script>
     tailwind.config = {
       darkMode: 'class',
@@ -26,7 +28,6 @@
       }
     }
   </script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <style>
     html { scroll-behavior: smooth; }
     body { font-family: 'Inter', sans-serif; }
@@ -104,6 +105,11 @@
 
       <!-- Right side -->
       <div class="flex items-center gap-3">
+        <!-- Language toggle -->
+        <button id="lang-toggle" onclick="toggleLandingLang()"
+            class="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-neutral-700 text-xs font-bold text-slate-500 dark:text-gray-400 hover:bg-slate-100 dark:hover:bg-neutral-800 transition-colors"
+            aria-label="Cambiar idioma">
+        </button>
         <!-- Dark mode toggle -->
         <button id="dark-toggle" class="p-2 rounded-lg text-slate-500 dark:text-gray-400 hover:bg-slate-100 dark:hover:bg-neutral-800 transition-colors" aria-label="Toggle dark mode">
           <svg id="icon-moon" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
@@ -176,7 +182,7 @@
     <div class="flex flex-wrap items-center justify-center gap-3 reveal">
       <div class="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 text-sm text-slate-300">
         <span class="w-2 h-2 rounded-full bg-green-400"></span>
-        <span class="font-semibold text-white">99.96%</span> Accuracy
+        <span class="font-semibold text-white">99.96%</span> <span data-i18n="landing.accuracy">Exactitud</span>
       </div>
       <div class="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 text-sm text-slate-300">
         <span class="w-2 h-2 rounded-full bg-indigo-400"></span>
@@ -341,12 +347,12 @@
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
       <div class="reveal p-6 rounded-2xl bg-white/5 border border-white/10 text-center hover:bg-white/8 transition-colors">
         <div class="counter text-4xl sm:text-5xl font-black text-white mb-1" data-target="9996" data-decimals="2" data-suffix="%">0%</div>
-        <div class="text-sm font-semibold text-indigo-300 mb-1">Accuracy</div>
+        <div class="text-sm font-semibold text-indigo-300 mb-1" data-i18n="landing.accuracy">Exactitud</div>
         <div class="text-xs text-gray-500">Conjunto de prueba</div>
       </div>
       <div class="reveal p-6 rounded-2xl bg-white/5 border border-white/10 text-center hover:bg-white/8 transition-colors">
         <div class="counter text-4xl sm:text-5xl font-black text-white mb-1" data-target="9997" data-decimals="2" data-suffix="%">0%</div>
-        <div class="text-sm font-semibold text-violet-300 mb-1">F1-Score</div>
+        <div class="text-sm font-semibold text-violet-300 mb-1" data-i18n="landing.f1score">Puntuación F1</div>
         <div class="text-xs text-gray-500">XGBoost</div>
       </div>
       <div class="reveal p-6 rounded-2xl bg-white/5 border border-white/10 text-center hover:bg-white/8 transition-colors">
@@ -371,11 +377,11 @@
           <thead>
             <tr class="border-b border-white/10">
               <th class="text-left px-6 py-3 text-gray-400 font-semibold">Modelo</th>
-              <th class="text-right px-4 py-3 text-gray-400 font-semibold">Accuracy</th>
-              <th class="text-right px-4 py-3 text-gray-400 font-semibold">Precision</th>
-              <th class="text-right px-4 py-3 text-gray-400 font-semibold">Recall</th>
-              <th class="text-right px-4 py-3 text-gray-400 font-semibold">F1-Score</th>
-              <th class="text-right px-6 py-3 text-gray-400 font-semibold">AUC-ROC</th>
+              <th class="text-right px-4 py-3 text-gray-400 font-semibold" data-i18n="landing.accuracy">Exactitud</th>
+              <th class="text-right px-4 py-3 text-gray-400 font-semibold" data-i18n="landing.precision">Precisión</th>
+              <th class="text-right px-4 py-3 text-gray-400 font-semibold" data-i18n="landing.recall">Recuperación</th>
+              <th class="text-right px-4 py-3 text-gray-400 font-semibold" data-i18n="landing.f1score">Puntuación F1</th>
+              <th class="text-right px-6 py-3 text-gray-400 font-semibold" data-i18n="landing.aucroc">AUC-ROC</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-white/5">
@@ -462,7 +468,7 @@
 
           <!-- Metric chips -->
           <div class="flex flex-wrap gap-2 mb-5">
-            <span class="px-3 py-1 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-xs font-semibold rounded-full border border-green-200 dark:border-green-800">99.96% Accuracy</span>
+            <span class="px-3 py-1 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-xs font-semibold rounded-full border border-green-200 dark:border-green-800" data-i18n="landing.accuracy.chip">99.96% Exactitud</span>
             <span class="px-3 py-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 text-xs font-semibold rounded-full border border-indigo-200 dark:border-indigo-800">4 capas de defensa</span>
             <span class="px-3 py-1 bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-400 text-xs font-semibold rounded-full border border-violet-200 dark:border-violet-800">Validación cruzada</span>
             <span class="px-3 py-1 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 text-xs font-semibold rounded-full border border-blue-200 dark:border-blue-800">67K+ muestras</span>
@@ -730,6 +736,22 @@ function drawParticles() {
   requestAnimationFrame(drawParticles);
 }
 drawParticles();
+</script>
+
+<script>
+/* ── i18n landing ── */
+function applyLandingI18n() {
+  if (!window.i18n) return;
+  window.i18n._applyDOM();
+  const btn = document.getElementById('lang-toggle');
+  if (btn) btn.textContent = window.i18n.t('lang.toggle');
+}
+function toggleLandingLang() {
+  const next = window.i18n.lang === 'es' ? 'en' : 'es';
+  window.i18n.setLang(next);
+  applyLandingI18n();
+}
+applyLandingI18n();
 </script>
 </body>
 </html>

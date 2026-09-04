@@ -14,7 +14,7 @@ flowchart LR
     subgraph "Tu máquina (Windows)"
         A["Python / Gunicorn\napi_backend.py\npuerto 8000"]
     end
-    subgraph "Servidor remoto (100.108.127.116 via Tailscale)"
+    subgraph "Servidor remoto (100.75.237.65 via Tailscale)"
         B["LocalStack\npuerto 4566\nDynamoDB + S3 + SNS"]
         C["Redis\npuerto 6379\nRate limits + blocklist"]
     end
@@ -63,7 +63,7 @@ LocalStack corre en Docker en el servidor remoto y simula los servicios de AWS: 
 ### Levantar el contenedor
 
 ```bash
-# En el servidor remoto (100.108.127.116)
+# En el servidor remoto (100.75.237.65)
 docker run -d \
   -p 4566:4566 \
   -p 4510-4559:4510-4559 \
@@ -74,7 +74,7 @@ docker run -d \
 ### Verificar que está corriendo
 
 ```bash
-curl http://100.108.127.116:4566/_localstack/health
+curl http://100.75.237.65:4566/_localstack/health
 # {"services": {"dynamodb": "available", "s3": "available", ...}}
 ```
 
@@ -112,7 +112,7 @@ CMD ["gunicorn", "-c", "gunicorn.conf.py", "wsgi:app"]
 docker build -t athenai .
 docker run -d \
   -p 8000:8000 \
-  -e REMOTE_SERVER_IP=100.108.127.116 \
+  -e REMOTE_SERVER_IP=100.75.237.65 \
   -e SECRET_KEY=tu_clave_secreta \
   --name athenai \
   athenai
@@ -124,7 +124,7 @@ docker run -d \
 
 | Variable | Ejemplo | Descripción |
 |----------|---------|-------------|
-| `REMOTE_SERVER_IP` | `100.108.127.116` | IP del servidor con LocalStack y Redis |
+| `REMOTE_SERVER_IP` | `100.75.237.65` | IP del servidor con LocalStack y Redis |
 | `SECRET_KEY` | `abc123...` | Clave para firmar tokens JWT (mínimo 32 chars) |
 | `CORS_ORIGINS` | `http://localhost:3000` | Orígenes permitidos en CORS (comma-separated) |
 | `TRUSTED_PROXY_HOPS` | `0` | 0 = sin proxy; 1 = Nginx delante |

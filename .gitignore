@@ -26,15 +26,26 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+athenai-dashboard/venv_new/
+athenai-dashboard/venv_win/
+athenai-dashboard/venv_traffic_test/
 
 # Logs
 *.log
 athenai-dashboard/backend.log
 athenai-dashboard/frontend.log
+flask_*.txt
 
 # PIDs
 .backend.pid
 .frontend.pid
+
+# Docker volume data
+athenai-dashboard/localstack-data/
+athenai-dashboard/redis-data/
+
+# Generated repo dumps
+repomix-output.xml
 
 # LocalStack/AWS
 .aws/
@@ -65,6 +76,7 @@ training/data/
 # ---- Directorios de despliegue Lambda ----
 lambda_package_lite/
 lambda_package/
+lambda_package_hybrid/
 
 # ---- Variables de entorno (contienen credenciales) ----
 .env

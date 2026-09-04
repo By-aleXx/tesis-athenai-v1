@@ -30,7 +30,7 @@ flowchart TD
 
 ## Redis (caché de tiempo real)
 
-- **Host:** `100.108.127.116:6379` (servidor remoto via Tailscale)
+- **Host:** `100.75.237.65:6379` (servidor remoto via Tailscale)
 - **Por qué Redis:** responde en < 1 ms. Ideal para decisiones que se toman en cada request.
 
 ### Claves usadas
@@ -50,7 +50,7 @@ flowchart TD
 
 ## DynamoDB (LocalStack)
 
-Emulado localmente con **LocalStack** en `http://100.108.127.116:4566`.
+Emulado localmente con **LocalStack** en `http://100.75.237.65:4566`.
 
 En producción real se usaría **AWS DynamoDB** cambiando el endpoint en `config.py`.
 
@@ -111,7 +111,7 @@ En producción real se usaría **AWS DynamoDB** cambiando el endpoint en `config
 ```python
 # models.py
 is_test_attack = Column(Boolean, index=True, default=False)
-# True cuando el request viene de la IP 100.108.127.116 (entorno de pruebas)
+# True cuando el request viene de la IP 100.75.237.65 (entorno de pruebas)
 ```
 
 En el dashboard, los test attacks aparecen con fondo rojo y badge "🔴 TEST ATTACK".

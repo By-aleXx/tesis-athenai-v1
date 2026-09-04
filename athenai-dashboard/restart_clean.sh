@@ -9,7 +9,7 @@ echo "========================================================================"
 # 1. Detener servidores existentes
 echo "🛑 Deteniendo servidores existentes..."
 pkill -f "python3 -m http.server 8000" 2>/dev/null
-pkill -f "python3 api_backend.py" 2>/dev/null
+pkill -f "app.core.api_backend" 2>/dev/null
 sleep 2
 
 # 2. Verificar archivos locales
@@ -28,7 +28,7 @@ echo "✅ Todos los archivos JS locales presentes"
 # 3. Reiniciar backend
 echo ""
 echo "🚀 Iniciando Backend API..."
-python3 api_backend.py > backend.log 2>&1 &
+python3 -m app.core.api_backend > backend.log 2>&1 &
 BACKEND_PID=$!
 echo "   Backend PID: $BACKEND_PID"
 sleep 3

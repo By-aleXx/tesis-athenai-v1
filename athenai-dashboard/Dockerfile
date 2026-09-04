@@ -24,4 +24,4 @@ COPY . .
 EXPOSE 5000
 
 # Comando por defecto
-CMD ["python", "api_backend.py"]
+CMD ["python", "-m", "app.core.api_backend"]

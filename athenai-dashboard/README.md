@@ -41,7 +41,7 @@ Esto:
 # Terminal 1 - Backend
 cd athenai-dashboard
 pip install -r requirements.txt --break-system-packages
-python3 api_backend.py
+python3 -m app.core.api_backend
 
 # Terminal 2 - Frontend
 firefox index.html
@@ -217,7 +217,7 @@ awslocal s3 ls s3://athenai-alertas/alerts/ --recursive
 ```bash
 # Usar gunicorn para producción
 pip install gunicorn
-gunicorn -w 4 -b 0.0.0.0:5000 api_backend:app
+gunicorn -w 4 -b 0.0.0.0:5000 wsgi:app
 ```
 
 ### Frontend

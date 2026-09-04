@@ -8,7 +8,7 @@ Se ha implementado exitosamente un sistema completo de interceptación y visuali
 
 ✅ **Middleware de Interceptación** (`middleware.py`)
 - Intercepta automáticamente todas las solicitudes HTTP
-- Detecta IP autorizada (100.108.127.116) y marca como test attack
+- Detecta IP autorizada (100.75.237.65) y marca como test attack
 - Captura headers, body, query params, user agent
 - No bloquea el flujo de la aplicación
 
@@ -76,7 +76,7 @@ http://localhost:5000
 
 ## 🔴 Pruebas de Seguridad
 
-Cuando hagas requests desde la IP **100.108.127.116**:
+Cuando hagas requests desde la IP **100.75.237.65**:
 
 1. Se marcarán automáticamente como `is_test_attack: true`
 2. Aparecerán con fondo rojo en la tabla
@@ -106,7 +106,7 @@ Cuando hagas requests desde la IP **100.108.127.116**:
 ## ✨ Próximos Pasos
 
 1. ✅ Sistema funcionando - 4 logs ya registrados
-2. 🔄 Hacer pruebas desde la IP autorizada (100.108.127.116)
+2. 🔄 Hacer pruebas desde la IP autorizada (100.75.237.65)
 3. 📊 Analizar payloads de inyección capturados
 4. 🎨 Personalizar visualización según necesidades
 5. 🗄️ Configurar rotación de logs si es necesario
@@ -114,7 +114,7 @@ Cuando hagas requests desde la IP **100.108.127.116**:
 ## 🎯 IP Autorizada
 
 ```
-100.108.127.116
+100.75.237.65
 ```
 
 Cualquier request desde esta IP se marcará automáticamente como **TEST ATTACK** 🔴

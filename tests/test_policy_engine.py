@@ -19,7 +19,7 @@ os.environ.setdefault('REDIS_HOST', '127.0.0.1')
 os.environ.setdefault('JWT_SECRET_KEY', 'test-key')
 os.environ.setdefault('JWT_REFRESH_SECRET_KEY', 'test-refresh-key')
 
-from policy_engine import PolicyEngine, PolicyAction, PolicyDecision
+from app.security.policy_engine import PolicyEngine, PolicyAction, PolicyDecision
 
 
 @pytest.fixture

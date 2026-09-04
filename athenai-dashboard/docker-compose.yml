@@ -1,24 +1,19 @@
 # AthenAI - Docker Compose Configuration
 # Configuración para desarrollo local con LocalStack y Redis
 
-version: '3.8'
-
 services:
   # LocalStack - Simula servicios AWS localmente
   localstack:
     image: localstack/localstack:latest
     container_name: athenai-localstack
     ports:
-      - "4566:4566"  # LocalStack endpoint
-      - "4571:4571"  # LocalStack dashboard (opcional)
+      - "127.0.0.1:4566:4566"  # LocalStack endpoint — solo accesible desde localhost
+      - "127.0.0.1:4571:4571"  # LocalStack dashboard (opcional)
     environment:
       - SERVICES=s3,dynamodb,secretsmanager,sns,ses,logs,cloudwatch,kinesis,lambda,sagemaker
       - DEBUG=1
-      - DATA_DIR=/tmp/localstack/data
-      - DOCKER_HOST=unix:///var/run/docker.sock
     volumes:
-      - "./localstack-data:/tmp/localstack"
-      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "./localstack-data:/var/lib/localstack"
     networks:
       - athenai-network
     healthcheck:
@@ -31,8 +26,6 @@ services:
   redis:
     image: redis:7-alpine
     container_name: athenai-redis
-    ports:
-      - "6379:6379"
     command: redis-server --appendonly yes --requirepass athenai_redis_pass
     volumes:
       - "./redis-data:/data"
@@ -43,6 +36,21 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+
+  # AthenAI WhatsApp Notification Service
+  athenai-whatsapp:
+    build:
+      context: ./whatsapp-service
+      dockerfile: Dockerfile
+    container_name: athenai-whatsapp
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./whatsapp-service/session:/app/session
+    networks:
+      - athenai-network
+    restart: unless-stopped
+    shm_size: '256mb'
 
   # AthenAI API Backend
   athenai-api:
@@ -59,19 +67,32 @@ services:
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_DEFAULT_REGION=us-east-1
-      
+      - AWS_REGION=us-east-1
+
       # Redis
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=athenai_redis_pass
-      
+
       # Flask
-      - FLASK_APP=api_backend.py
+      - FLASK_APP=app.core.api_backend
       - FLASK_ENV=development
       - FLASK_DEBUG=1
+
+      # JWT — valores obligatorios, definir en .env antes de levantar
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set in .env}
+      - JWT_REFRESH_SECRET_KEY=${JWT_REFRESH_SECRET_KEY:?JWT_REFRESH_SECRET_KEY must be set in .env}
+
+      # Encoding
+      - PYTHONIOENCODING=utf-8
+      - PYTHONUTF8=1
+
+      # Timezone
+      - TZ=America/Mexico_City
     volumes:
       - .:/app
       - ./logs:/app/logs
+      - ../models:/app/models
     depends_on:
       localstack:
         condition: service_healthy
@@ -79,12 +100,11 @@ services:
         condition: service_healthy
     networks:
       - athenai-network
-    command: python api_backend.py
+    command: python -m app.core.api_backend
 
 networks:
   athenai-network:
     driver: bridge
 
 volumes:
-  localstack-data:
   redis-data:

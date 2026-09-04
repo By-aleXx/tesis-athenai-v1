@@ -24,6 +24,8 @@ wheels/
 # Database
 *.db
 *.sqlite3
+*.db-shm
+*.db-wal
 
 # Logs
 *.log
@@ -38,3 +40,6 @@ Thumbs.db
 .venv
 venv/
 ENV/
+
+# WhatsApp Web session (Chromium profile with live auth — never commit)
+whatsapp-service/session/

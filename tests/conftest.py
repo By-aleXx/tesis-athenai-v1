@@ -34,7 +34,7 @@ def app_client():
     Usa una base de datos SQLite en memoria para no afectar la BD real.
     """
     # Importar app aquí (DESPUÉS de setear env vars)
-    from api_backend import app
+    from app.core.api_backend import app
 
     app.config['TESTING'] = True
     app.config['WTF_CSRF_ENABLED'] = False

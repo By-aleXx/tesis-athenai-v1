@@ -17,7 +17,7 @@ fi
 
 # Iniciar backend en background
 echo "🚀 Iniciando API Backend..."
-python3 api_backend.py &
+python3 -m app.core.api_backend &
 BACKEND_PID=$!
 
 echo "   Backend PID: $BACKEND_PID"

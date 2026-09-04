@@ -75,7 +75,7 @@ Write-Host ""
 
 # Ejecutar el backend
 try {
-    python api_backend.py
+    python -m app.core.api_backend
 } catch {
     Write-Host ""
     Write-Host "❌ ERROR: No se pudo iniciar el backend" -ForegroundColor Red

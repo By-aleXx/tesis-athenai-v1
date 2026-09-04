@@ -1,6 +1,12 @@
 """
 AthenAI - Feature Engineering
 Módulo para extraer features de texto para modelos de ML tradicionales
+
+NOTA: existe una copia de este archivo en athenai-dashboard/app/ml/feature_engineering.py
+(usada en runtime por el backend Flask; agrega un shim de compatibilidad de pickle al
+final). Se mantienen como dos archivos separados porque este vive en el pipeline de
+entrenamiento standalone (posiblemente otro venv) y el otro dentro del paquete `app`.
+Cualquier cambio a la lógica de extracción de features debe aplicarse en AMBOS archivos.
 """
 
 import pandas as pd

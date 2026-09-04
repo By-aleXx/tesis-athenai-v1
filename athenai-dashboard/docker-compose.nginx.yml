@@ -31,7 +31,7 @@ services:
     image: python:3.9-slim
     container_name: athenai-backend
     working_dir: /app
-    command: python api_backend.py
+    command: python -m app.core.api_backend
     volumes:
       - .:/app
     ports:
@@ -41,8 +41,8 @@ services:
     restart: unless-stopped
     environment:
       - FLASK_ENV=production
-      - AWS_ENDPOINT_URL=http://100.108.127.116:4566
-      - REDIS_HOST=100.108.127.116
+      - AWS_ENDPOINT_URL=http://100.75.237.65:4566
+      - REDIS_HOST=100.75.237.65
       - REDIS_PORT=6379
 
 networks:

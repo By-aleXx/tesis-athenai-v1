@@ -12,7 +12,7 @@ pip install -r requirements.txt
 ### 2. Iniciar el Servidor
 
 ```bash
-python3 api_backend.py
+python3 -m app.core.api_backend
 ```
 
 El servidor iniciará en `http://0.0.0.0:5000` y automáticamente:
@@ -34,7 +34,7 @@ curl http://localhost:5000/api/traffic-logs
 curl http://localhost:5000/api/traffic-logs?is_test_attack=true
 
 # Filtrar por IP específica
-curl http://localhost:5000/api/traffic-logs?source_ip=100.108.127.116
+curl http://localhost:5000/api/traffic-logs?source_ip=100.75.237.65
 
 # Paginación
 curl http://localhost:5000/api/traffic-logs?limit=50&offset=100
@@ -50,11 +50,11 @@ curl http://localhost:5000/api/traffic-stats
 
 ## 🔴 Cómo Funciona el Marcado de Test Attacks
 
-**Automático**: Cualquier request que provenga de la IP `100.108.127.116` se marca automáticamente como `is_test_attack: true` en la base de datos.
+**Automático**: Cualquier request que provenga de la IP `100.75.237.65` se marca automáticamente como `is_test_attack: true` en la base de datos.
 
 **En la consola del servidor verás**:
 ```
-🔴 TEST ATTACK LOGGED: GET /api/stats from 100.108.127.116
+🔴 TEST ATTACK LOGGED: GET /api/stats from 100.75.237.65
 ```
 
 **En tráfico normal verás**:
@@ -99,14 +99,14 @@ SELECT * FROM traffic_logs WHERE is_test_attack = 1;
 **Cambiar IP autorizada**: Edita `middleware.py` línea 11:
 
 ```python
-AUTHORIZED_TEST_IP = '100.108.127.116'  # Cambiar aquí
+AUTHORIZED_TEST_IP = '100.75.237.65'  # Cambiar aquí
 ```
 
 **Agregar múltiples IPs**: Modifica la función `is_test_attack()` en `middleware.py`:
 
 ```python
 def is_test_attack(ip):
-    AUTHORIZED_IPS = ['100.108.127.116', '192.168.1.50', '10.0.0.100']
+    AUTHORIZED_IPS = ['100.75.237.65', '192.168.1.50', '10.0.0.100']
     return ip in AUTHORIZED_IPS
 ```
 
@@ -118,7 +118,7 @@ def is_test_attack(ip):
 {
   "id": 1,
   "timestamp": "2026-01-26T22:30:00.123456",
-  "source_ip": "100.108.127.116",
+  "source_ip": "100.75.237.65",
   "method": "GET",
   "path": "/api/stats",
   "query_params": "id=1' OR '1'='1",

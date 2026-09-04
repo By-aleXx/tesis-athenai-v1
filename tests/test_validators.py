@@ -23,7 +23,7 @@ os.environ.setdefault('REMOTE_SERVER_IP', '127.0.0.1')
 os.environ.setdefault('REDIS_HOST', '127.0.0.1')
 
 from marshmallow import ValidationError
-from validators import (
+from app.auth.validators import (
     LoginSchema, RegisterSchema, RefreshTokenSchema,
     BlockIPSchema, WhitelistSchema, TrafficSplitSchema,
     PolicyThresholdSchema

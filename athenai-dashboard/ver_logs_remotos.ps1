@@ -1,5 +1,5 @@
 # ===============================================================================
-# SCRIPT PARA CONSULTAR LOGS DEL SERVIDOR REMOTO (100.108.127.116)
+# SCRIPT PARA CONSULTAR LOGS DEL SERVIDOR REMOTO (100.75.237.65)
 # AthenAI - Sistema de Detección de Intrusiones
 # ===============================================================================
 
@@ -12,7 +12,7 @@ param(
     [int]$Limite = 10
 )
 
-$REMOTE_SERVER = "100.108.127.116"
+$REMOTE_SERVER = "100.75.237.65"
 $LOCALSTACK_PORT = "4566"
 $REDIS_PORT = "6379"
 

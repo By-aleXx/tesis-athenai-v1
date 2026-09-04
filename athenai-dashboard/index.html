@@ -4,12 +4,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AthenAI - Security Dashboard</title>
+    <title>AthenAI - Panel de Seguridad</title>
 
     <!-- Tailwind CSS v3.4.1 — CDN con fallback local -->
-    <script src="https://cdn.tailwindcss.com/3.4.1" crossorigin="anonymous"
-        onerror="var s=document.createElement('script');s.src='/static/tailwind.min.js';document.head.appendChild(s);">
-    </script>
+    <script src="/static/tailwind.min.js"></script>
     <script>
         tailwind.config = {
             darkMode: 'class'
@@ -20,11 +18,10 @@
     <script src="auth.js" onerror="window._scriptError && window._scriptError('auth.js')"></script>
 
     <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
     <style>
         * {
-            font-family: 'Inter', sans-serif;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
             transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
         }
 
@@ -232,6 +229,9 @@
         })();
     </script>
 
+    <!-- i18n (antes de Babel) -->
+    <script src="/static/translations.js"></script>
+
     <!-- Babel al final -->
     <script src="assets/js/babel.js" onerror="window._scriptError('babel.js')"></script>
 
@@ -431,6 +431,309 @@
                     console.error('UNDEFINED COMPONENTS:', undefinedComponents);
                 }
 
+                // ─── WhatsApp Panel Component ────────────────────────────────
+                const WhatsAppPanel = ({ token }) => {
+                    const [waStatus, setWaStatus] = useState(null);
+                    const [qrData, setQrData] = useState(null);
+                    const [numbers, setNumbers] = useState([]);
+                    const [newNumber, setNewNumber] = useState('');
+                    const [testNumber, setTestNumber] = useState('');
+                    const [loading, setLoading] = useState(false);
+                    const [msg, setMsg] = useState(null);
+
+                    const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+                    const fetchStatus = async () => {
+                        try {
+                            const r = await fetch('/api/whatsapp/status', { headers });
+                            const d = await r.json();
+                            setWaStatus(d);
+                            setNumbers(d.alert_numbers || []);
+                        } catch(e) { setWaStatus({ available: false, error: e.message }); }
+                    };
+
+                    const fetchQR = async () => {
+                        try {
+                            const r = await fetch('/api/whatsapp/qr', { headers });
+                            const d = await r.json();
+                            setQrData(d);
+                        } catch(e) {}
+                    };
+
+                    useEffect(() => {
+                        fetchStatus();
+                        const t = setInterval(fetchStatus, 5000);
+                        return () => clearInterval(t);
+                    }, []);
+
+                    const addNumber = async () => {
+                        if (!newNumber.trim()) return;
+                        setLoading(true);
+                        try {
+                            const r = await fetch('/api/whatsapp/numbers', { method: 'POST', headers, body: JSON.stringify({ number: newNumber.trim() }) });
+                            const d = await r.json();
+                            if (d.success) { setNumbers(d.numbers); setNewNumber(''); setMsg({ type: 'ok', text: `✅ Número ${newNumber} agregado` }); }
+                            else setMsg({ type: 'err', text: d.error });
+                        } catch(e) { setMsg({ type: 'err', text: e.message }); }
+                        setLoading(false);
+                    };
+
+                    const removeNumber = async (num) => {
+                        try {
+                            await fetch(`/api/whatsapp/numbers/${num}`, { method: 'DELETE', headers });
+                            setNumbers(prev => prev.filter(n => n !== num));
+                        } catch(e) {}
+                    };
+
+                    const sendTest = async () => {
+                        if (!testNumber.trim()) return;
+                        setLoading(true);
+                        try {
+                            const r = await fetch('/api/whatsapp/test', { method: 'POST', headers, body: JSON.stringify({ number: testNumber.trim() }) });
+                            const d = await r.json();
+                            setMsg(d.success ? { type: 'ok', text: '✅ Mensaje de prueba enviado' } : { type: 'err', text: d.error });
+                        } catch(e) { setMsg({ type: 'err', text: e.message }); }
+                        setLoading(false);
+                    };
+
+                    const connected = waStatus?.status === 'CONNECTED';
+
+                    return React.createElement('div', { className: 'space-y-6' },
+                        // Header
+                        React.createElement('div', { className: 'mb-2' },
+                            React.createElement('h2', { className: 'text-2xl font-bold text-slate-800 dark:text-white mb-1' }, '📱 Notificaciones WhatsApp'),
+                            React.createElement('p', { className: 'text-slate-500 dark:text-gray-400 text-sm' }, 'Recibe alertas de seguridad en tiempo real por WhatsApp cuando el WAF detecta un ataque.')
+                        ),
+
+                        // Estado de conexión
+                        React.createElement('div', { className: 'bg-white dark:bg-black rounded-xl p-6 shadow-sm border border-slate-200 dark:border-neutral-700' },
+                            React.createElement('div', { className: 'flex items-center justify-between mb-4' },
+                                React.createElement('h3', { className: 'font-semibold text-slate-800 dark:text-white' }, 'Estado de Conexión'),
+                                React.createElement('button', { onClick: fetchStatus, className: 'text-xs text-indigo-600 hover:underline' }, 'Actualizar')
+                            ),
+                            React.createElement('div', { className: 'flex items-center gap-3 mb-4' },
+                                React.createElement('div', { className: `w-3 h-3 rounded-full ${connected ? 'bg-green-500 animate-pulse' : waStatus?.status === 'QR_READY' ? 'bg-yellow-400 animate-pulse' : 'bg-red-400'}` }),
+                                React.createElement('span', { className: 'font-medium text-slate-700 dark:text-gray-200' },
+                                    connected ? '✅ WhatsApp Conectado' : waStatus?.status === 'QR_READY' ? '📷 Esperando escaneo de QR' : '🔴 Desconectado'
+                                )
+                            ),
+                            !connected && React.createElement('div', { className: 'space-y-3' },
+                                React.createElement('p', { className: 'text-sm text-slate-600 dark:text-gray-300' },
+                                    'Para conectar WhatsApp, haz clic en "Ver QR Code" y escanéalo con tu número de WhatsApp dedicado para AthenAI.'
+                                ),
+                                React.createElement('button', {
+                                    onClick: () => { fetchQR(); },
+                                    className: 'px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors'
+                                }, '📷 Ver QR Code'),
+                                qrData?.qr && React.createElement('div', { className: 'mt-4 flex flex-col items-center gap-2' },
+                                    React.createElement('p', { className: 'text-xs text-slate-500 dark:text-gray-400' }, 'Escanea este QR con WhatsApp → Dispositivos vinculados → Vincular dispositivo'),
+                                    React.createElement('img', { src: qrData.qr, alt: 'QR WhatsApp', className: 'w-48 h-48 rounded-lg border border-slate-200 dark:border-neutral-600' })
+                                ),
+                                qrData?.message && React.createElement('p', { className: 'text-sm text-slate-500 dark:text-gray-400 italic' }, qrData.message)
+                            )
+                        ),
+
+                        // Números de alerta
+                        React.createElement('div', { className: 'bg-white dark:bg-black rounded-xl p-6 shadow-sm border border-slate-200 dark:border-neutral-700' },
+                            React.createElement('h3', { className: 'font-semibold text-slate-800 dark:text-white mb-4' }, '📋 Números que reciben alertas'),
+                            React.createElement('div', { className: 'flex gap-2 mb-4' },
+                                React.createElement('input', {
+                                    type: 'text', value: newNumber,
+                                    onChange: e => setNewNumber(e.target.value),
+                                    onKeyDown: e => e.key === 'Enter' && addNumber(),
+                                    placeholder: 'Ej: 521234567890 (sin + ni espacios)',
+                                    className: 'flex-1 px-3 py-2 border border-slate-300 dark:border-neutral-600 rounded-lg text-sm bg-white dark:bg-neutral-900 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500'
+                                }),
+                                React.createElement('button', {
+                                    onClick: addNumber, disabled: loading,
+                                    className: 'px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50'
+                                }, '+ Agregar')
+                            ),
+                            numbers.length === 0
+                                ? React.createElement('p', { className: 'text-sm text-slate-400 dark:text-gray-500 italic' }, 'No hay números configurados. Agrega uno arriba.')
+                                : React.createElement('div', { className: 'space-y-2' },
+                                    numbers.map(n => React.createElement('div', { key: n, className: 'flex items-center justify-between p-3 bg-slate-50 dark:bg-neutral-900 rounded-lg' },
+                                        React.createElement('span', { className: 'font-mono text-sm text-slate-700 dark:text-gray-200' }, `+${n}`),
+                                        React.createElement('button', {
+                                            onClick: () => removeNumber(n),
+                                            className: 'text-red-500 hover:text-red-700 text-xs font-medium'
+                                        }, 'Eliminar')
+                                    ))
+                                )
+                        ),
+
+                        // Enviar prueba
+                        React.createElement('div', { className: 'bg-white dark:bg-black rounded-xl p-6 shadow-sm border border-slate-200 dark:border-neutral-700' },
+                            React.createElement('h3', { className: 'font-semibold text-slate-800 dark:text-white mb-4' }, '🧪 Enviar mensaje de prueba'),
+                            React.createElement('div', { className: 'flex gap-2' },
+                                React.createElement('input', {
+                                    type: 'text', value: testNumber,
+                                    onChange: e => setTestNumber(e.target.value),
+                                    placeholder: 'Número destino (ej: 521234567890)',
+                                    className: 'flex-1 px-3 py-2 border border-slate-300 dark:border-neutral-600 rounded-lg text-sm bg-white dark:bg-neutral-900 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500'
+                                }),
+                                React.createElement('button', {
+                                    onClick: sendTest, disabled: loading || !connected,
+                                    className: 'px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50',
+                                    title: !connected ? 'Conecta WhatsApp primero' : ''
+                                }, 'Enviar prueba')
+                            ),
+                            !connected && React.createElement('p', { className: 'text-xs text-amber-500 dark:text-amber-400 mt-2' }, '⚠️ Debes conectar WhatsApp primero para enviar mensajes.')
+                        ),
+
+                        // Mensaje de feedback
+                        msg && React.createElement('div', {
+                            className: `p-3 rounded-lg text-sm font-medium ${msg.type === 'ok' ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'}`
+                        }, msg.text),
+
+                        // Info
+                        React.createElement('div', { className: 'bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4' },
+                            React.createElement('p', { className: 'text-xs text-amber-800 dark:text-amber-300 font-medium mb-1' }, '⚠️ Aviso importante'),
+                            React.createElement('p', { className: 'text-xs text-amber-700 dark:text-amber-400' },
+                                'open-wa usa automatización no oficial de WhatsApp Web. Usa un número dedicado para AthenAI, no tu número personal, para evitar restricciones de cuenta.'
+                            )
+                        )
+                    );
+                };
+                // ─────────────────────────────────────────────────────────────
+
+                // ─── Email Panel Component ────────────────────────────────────
+                const EmailPanel = ({ token }) => {
+                    const [status, setStatus] = useState(null);
+                    const [recipients, setRecipients] = useState([]);
+                    const [newEmail, setNewEmail] = useState('');
+                    const [testEmail, setTestEmail] = useState('');
+                    const [loading, setLoading] = useState(false);
+                    const [msg, setMsg] = useState(null);
+
+                    const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+                    const fetchStatus = async () => {
+                        try {
+                            const r = await fetch('/api/email/status', { headers });
+                            const d = await r.json();
+                            setStatus(d);
+                            setRecipients(d.recipients || []);
+                        } catch(e) { setStatus({ available: false, error: e.message }); }
+                    };
+
+                    useEffect(() => { fetchStatus(); }, []);
+
+                    const addRecipient = async () => {
+                        if (!newEmail.trim()) return;
+                        setLoading(true);
+                        setMsg(null);
+                        try {
+                            const r = await fetch('/api/email/recipients', { method: 'POST', headers, body: JSON.stringify({ email: newEmail.trim() }) });
+                            const d = await r.json();
+                            if (d.success) { setRecipients(d.recipients); setNewEmail(''); setMsg({ type: 'ok', text: `✅ ${newEmail} agregado` }); }
+                            else setMsg({ type: 'err', text: d.error });
+                        } catch(e) { setMsg({ type: 'err', text: e.message }); }
+                        setLoading(false);
+                    };
+
+                    const removeRecipient = async (email) => {
+                        try {
+                            await fetch(`/api/email/recipients/${email}`, { method: 'DELETE', headers });
+                            setRecipients(prev => prev.filter(e => e !== email));
+                        } catch(e) {}
+                    };
+
+                    const sendTest = async () => {
+                        if (!testEmail.trim()) return;
+                        setLoading(true);
+                        setMsg(null);
+                        try {
+                            const r = await fetch('/api/email/test', { method: 'POST', headers, body: JSON.stringify({ email: testEmail.trim() }) });
+                            const d = await r.json();
+                            setMsg(d.success ? { type: 'ok', text: '✅ Correo de prueba enviado — revisa tu bandeja' } : { type: 'err', text: d.error });
+                        } catch(e) { setMsg({ type: 'err', text: e.message }); }
+                        setLoading(false);
+                    };
+
+                    return React.createElement('div', { className: 'space-y-6' },
+                        React.createElement('div', { className: 'mb-2' },
+                            React.createElement('h2', { className: 'text-2xl font-bold text-slate-800 dark:text-white mb-1' }, '📧 Notificaciones por Correo'),
+                            React.createElement('p', { className: 'text-slate-500 dark:text-gray-400 text-sm' }, 'Envía alertas de seguridad automáticas por correo electrónico cuando el WAF detecta un ataque.')
+                        ),
+
+                        // Estado Resend
+                        React.createElement('div', { className: 'bg-white dark:bg-black rounded-xl p-6 shadow-sm border border-slate-200 dark:border-neutral-700' },
+                            React.createElement('div', { className: 'flex items-center justify-between mb-4' },
+                                React.createElement('h3', { className: 'font-semibold text-slate-800 dark:text-white' }, 'Estado de conexión'),
+                                React.createElement('button', { onClick: fetchStatus, className: 'text-xs text-indigo-600 hover:underline' }, 'Actualizar')
+                            ),
+                            React.createElement('div', { className: 'flex items-center gap-3 mb-3' },
+                                React.createElement('div', { className: `w-3 h-3 rounded-full ${status?.available ? 'bg-green-500' : 'bg-red-400'}` }),
+                                React.createElement('span', { className: 'font-medium text-slate-700 dark:text-gray-200' },
+                                    status?.available ? '✅ Resend configurado y listo' : '🔴 Resend no disponible'
+                                )
+                            ),
+                            !status?.available && React.createElement('div', { className: 'text-sm text-slate-500 dark:text-gray-400 space-y-1 mt-2' },
+                                React.createElement('p', null, '1. Regístrate en ', React.createElement('strong', null, 'resend.com'), ' con tu correo (sin teléfono)'),
+                                React.createElement('p', null, '2. Crea una API Key y agrégala al archivo ', React.createElement('code', { className: 'bg-slate-100 dark:bg-neutral-800 px-1 rounded' }, '.env'), ':'),
+                                React.createElement('pre', { className: 'bg-slate-100 dark:bg-neutral-900 rounded p-2 mt-1 text-xs overflow-x-auto' }, 'RESEND_API_KEY=re_xxxxxxxxxxxxxxxx'),
+                                React.createElement('p', null, '3. Reinicia el servidor para aplicar los cambios')
+                            ),
+                            status?.available && status?.from && React.createElement('p', { className: 'text-xs text-slate-500 dark:text-gray-400 mt-2' },
+                                'Remitente: ', React.createElement('code', { className: 'bg-slate-100 dark:bg-neutral-800 px-1 rounded' }, status.from)
+                            )
+                        ),
+
+                        // Destinatarios
+                        React.createElement('div', { className: 'bg-white dark:bg-black rounded-xl p-6 shadow-sm border border-slate-200 dark:border-neutral-700' },
+                            React.createElement('h3', { className: 'font-semibold text-slate-800 dark:text-white mb-4' }, '📋 Destinatarios de alertas'),
+                            React.createElement('div', { className: 'flex gap-2 mb-4' },
+                                React.createElement('input', {
+                                    type: 'email', value: newEmail,
+                                    onChange: e => setNewEmail(e.target.value),
+                                    onKeyDown: e => e.key === 'Enter' && addRecipient(),
+                                    placeholder: 'correo@ejemplo.com',
+                                    className: 'flex-1 px-3 py-2 border border-slate-300 dark:border-neutral-600 rounded-lg text-sm bg-white dark:bg-neutral-900 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500'
+                                }),
+                                React.createElement('button', {
+                                    onClick: addRecipient, disabled: loading,
+                                    className: 'px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50'
+                                }, '+ Agregar')
+                            ),
+                            recipients.length === 0
+                                ? React.createElement('p', { className: 'text-sm text-slate-400 dark:text-gray-500 italic' }, 'No hay destinatarios configurados. Agrega uno arriba.')
+                                : React.createElement('div', { className: 'space-y-2' },
+                                    recipients.map(e => React.createElement('div', { key: e, className: 'flex items-center justify-between p-3 bg-slate-50 dark:bg-neutral-900 rounded-lg' },
+                                        React.createElement('span', { className: 'text-sm text-slate-700 dark:text-gray-200' }, e),
+                                        React.createElement('button', { onClick: () => removeRecipient(e), className: 'text-red-500 hover:text-red-700 text-xs font-medium' }, 'Eliminar')
+                                    ))
+                                )
+                        ),
+
+                        // Prueba
+                        React.createElement('div', { className: 'bg-white dark:bg-black rounded-xl p-6 shadow-sm border border-slate-200 dark:border-neutral-700' },
+                            React.createElement('h3', { className: 'font-semibold text-slate-800 dark:text-white mb-4' }, '🧪 Enviar correo de prueba'),
+                            React.createElement('p', { className: 'text-xs text-slate-400 dark:text-gray-500 mb-3' },
+                                'En modo test (onboarding@resend.dev) solo puedes enviar al correo con el que te registraste en Resend.'
+                            ),
+                            React.createElement('div', { className: 'flex gap-2' },
+                                React.createElement('input', {
+                                    type: 'email', value: testEmail,
+                                    onChange: e => setTestEmail(e.target.value),
+                                    placeholder: 'tu_correo@resend.com',
+                                    className: 'flex-1 px-3 py-2 border border-slate-300 dark:border-neutral-600 rounded-lg text-sm bg-white dark:bg-neutral-900 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500'
+                                }),
+                                React.createElement('button', {
+                                    onClick: sendTest, disabled: loading || !status?.available,
+                                    className: 'px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50',
+                                    title: !status?.available ? 'Configura RESEND_API_KEY primero' : ''
+                                }, 'Enviar prueba')
+                            )
+                        ),
+
+                        msg && React.createElement('div', {
+                            className: `p-3 rounded-lg text-sm font-medium ${msg.type === 'ok' ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'}`
+                        }, msg.text)
+                    );
+                };
+                // ─────────────────────────────────────────────────────────────
+
                 const Dashboard = () => {
                     const [tab, setTab] = useState('dashboard');
                     const [selectedLog, setSelectedLog] = useState(null);
@@ -440,6 +743,29 @@
                         const saved = localStorage.getItem('darkMode');
                         return saved === 'true';
                     });
+                    const [lang, setLang] = useState(() => localStorage.getItem('athenai_lang') || 'es');
+
+                    // Token JWT actual (WhatsAppPanel/EmailPanel lo necesitan como prop)
+                    const token = authService.getAccessToken();
+
+                    // Función de traducción — re-renderiza automáticamente al cambiar lang
+                    const t = (key) => {
+                        const dict = window.TRANSLATIONS?.[lang] || window.TRANSLATIONS?.['es'] || {};
+                        const val = dict[key] ?? window.TRANSLATIONS?.['es']?.[key];
+                        return typeof val === 'string' ? val : key;
+                    };
+
+                    // Registrar callback para cambios de idioma desde fuera de React
+                    window.__i18nReactUpdate = (newLang) => setLang(newLang);
+
+                    // Sincronizar cambio de idioma con i18n global
+                    const toggleLang = () => {
+                        const next = lang === 'es' ? 'en' : 'es';
+                        setLang(next);
+                        if (window.i18n) window.i18n.lang = next;
+                        localStorage.setItem('athenai_lang', next);
+                        document.documentElement.setAttribute('lang', next);
+                    };
 
                     const [sidebarOpen, setSidebarOpen] = useState(false); // Mobile sidebar state
 
@@ -660,6 +986,8 @@
                                         'ip-management',
                                         ...(isAnalyst ? ['ab-testing'] : []),
                                         'ml-status',
+                                        'whatsapp',
+                                        'email',
                                     ].map(id => (
                                         <button
                                             key={id}
@@ -668,8 +996,8 @@
                                             className={`p-3 rounded-xl transition-all hover-lift min-h-[44px] flex items-center justify-center lg:justify-center ${tab === id ? 'bg-indigo-50 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-gray-400 hover:text-slate-600 dark:text-gray-200 dark:hover:text-slate-300'}`}
                                         >
                                             <span className="flex items-center gap-3">
-                                                {id === 'dashboard' ? <Icons.Activity /> : id === 'threats' ? <Icons.Fire /> : id === 'alerts' ? <Icons.Bell /> : id === 'traffic-logs' ? <Icons.Database /> : id === 'analytics' ? <Icons.Chart /> : id === 'ip-management' ? <Icons.Shield /> : id === 'ab-testing' ? <Icons.GitBranch /> : <Icons.Cpu />}
-                                                <span className="lg:hidden text-sm font-medium capitalize">{{ dashboard: 'Panel', threats: 'Amenazas', alerts: 'Alertas', 'traffic-logs': 'Logs Tráfico', analytics: 'Analítica', 'ip-management': 'Gestión IPs', 'ab-testing': 'A/B Testing', 'ml-status': 'Estado ML' }[id] || id}</span>
+                                                {id === 'dashboard' ? <Icons.Activity /> : id === 'threats' ? <Icons.Fire /> : id === 'alerts' ? <Icons.Bell /> : id === 'traffic-logs' ? <Icons.Database /> : id === 'analytics' ? <Icons.Chart /> : id === 'ip-management' ? <Icons.Shield /> : id === 'ab-testing' ? <Icons.GitBranch /> : id === 'whatsapp' ? <span style={{fontSize:'16px'}}>📱</span> : id === 'email' ? <span style={{fontSize:'16px'}}>📧</span> : <Icons.Cpu />}
+                                                <span className="lg:hidden text-sm font-medium capitalize">{{ dashboard: 'Panel', threats: 'Amenazas', alerts: 'Alertas', 'traffic-logs': 'Logs Tráfico', analytics: 'Analítica', 'ip-management': 'Gestión IPs', 'ab-testing': 'A/B Testing', 'ml-status': 'Estado ML', whatsapp: 'WhatsApp', email: 'Email' }[id] || id}</span>
                                             </span>
                                         </button>
                                     ))}
@@ -680,7 +1008,7 @@
                                 <div className="bg-white dark:bg-black border-b border-slate-200 dark:border-neutral-700 dark:border-neutral-800 px-4 sm:px-6 lg:px-8 py-4 sm:py-6 sticky top-0 z-10 bg-opacity-90 backdrop-blur-sm flex justify-between items-center">
                                     <div className="flex items-center gap-4">
                                         <div className="lg:hidden w-12"></div> {/* Spacer for hamburger */}
-                                        <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-slate-800 dark:text-white">{{ dashboard: 'Panel Principal', threats: 'Amenazas Detectadas', alerts: 'Alertas de Seguridad', 'traffic-logs': 'Logs de Tráfico', analytics: 'Analítica', 'ip-management': 'Gestión de IPs', 'ab-testing': 'A/B Testing', 'ml-status': 'Estado del ML' }[tab] || 'AthenAI Dashboard'}</h1>
+                                        <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-slate-800 dark:text-white">{{ dashboard: 'Panel Principal', threats: 'Amenazas Detectadas', alerts: 'Alertas de Seguridad', 'traffic-logs': 'Logs de Tráfico', analytics: 'Analítica', 'ip-management': 'Gestión de IPs', 'ab-testing': 'A/B Testing', 'ml-status': 'Estado del ML', whatsapp: 'Notificaciones WhatsApp', email: 'Notificaciones Email' }[tab] || 'AthenAI Dashboard'}</h1>
                                     </div>
                                     <div className="flex items-center space-x-2 sm:space-x-4">
                                         {/* User Profile */}
@@ -707,6 +1035,15 @@
                                             <span className="hidden sm:inline">Cerrar sesión</span>
                                         </button>
 
+                                        {/* Language Toggle */}
+                                        <button
+                                            onClick={toggleLang}
+                                            className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-neutral-700 hover:bg-slate-100 dark:hover:bg-neutral-800 transition-colors text-slate-600 dark:text-gray-200 text-xs font-bold min-h-[36px]"
+                                            title={lang === 'es' ? 'Switch to English' : 'Cambiar a español'}
+                                        >
+                                            {t('lang.toggle')}
+                                        </button>
+
                                         {/* Dark Mode Toggle */}
                                         <button
                                             onClick={() => setDarkMode(!darkMode)}
@@ -719,7 +1056,7 @@
                                         {/* Status Indicator */}
                                         <div className={`flex items-center space-x-2 px-2 sm:px-4 py-2 rounded-lg ${(health?.status === 'healthy' || health?.status === 'ok') ? 'bg-green-50 dark:bg-green-900' : 'bg-red-50 dark:bg-red-900'}`}>
                                             <div className={`w-2 h-2 rounded-full animate-pulse-green ${(health?.status === 'healthy' || health?.status === 'ok') ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                                            <span className={`hidden sm:inline text-sm font-medium ${(health?.status === 'healthy' || health?.status === 'ok') ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>{(health?.status === 'healthy' || health?.status === 'ok') ? 'Online' : 'Offline'}</span>
+                                            <span className={`hidden sm:inline text-sm font-medium ${(health?.status === 'healthy' || health?.status === 'ok') ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>{(health?.status === 'healthy' || health?.status === 'ok') ? t('status.online') : t('status.offline')}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -728,9 +1065,9 @@
                                     {tab === 'dashboard' && (
                                         <>
                                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                                                <KPICard title="Amenazas Hoy" value={stats?.threats_today || 0} sub={stats ? `+${stats.threats_change.toFixed(1)}%` : '...'} icon={Icons.Alert} color="text-red-600" loading={statsLoading} />
+                                                <KPICard title="Amenazas Hoy" value={stats?.threats_today || 0} sub={stats ? (stats.threats_change != null ? `+${stats.threats_change.toFixed(1)}%` : '—') : '...'} icon={Icons.Alert} color="text-red-600" loading={statsLoading} />
                                                 <KPICard title="Precisión" value={`${stats?.model_precision || 0}%`} sub="XGBoost + IF" icon={Icons.Shield} color="text-green-600" loading={statsLoading} />
-                                                <KPICard title="Latencia" value={`${stats?.avg_latency || 0}ms`} sub="Avg 24h" icon={Icons.Zap} color="text-indigo-600" loading={statsLoading} />
+                                                <KPICard title="Latencia" value={`${stats?.avg_latency != null ? stats.avg_latency + 'ms' : '—'}`} sub="Avg 24h" icon={Icons.Zap} color="text-indigo-600" loading={statsLoading} />
                                                 <KPICard title="Uptime" value={`${stats?.system_status || 100}%`} sub="Core Services" icon={Icons.Check} color="text-emerald-600" loading={statsLoading} />
                                             </div>
 
@@ -804,11 +1141,11 @@
                                             <div className="bg-white dark:bg-black rounded-xl shadow-sm border border-slate-200 dark:border-neutral-700 dark:border-neutral-800 overflow-hidden mt-6">
                                                 <div className="p-6 border-b border-slate-200 dark:border-neutral-700 dark:border-neutral-800 flex justify-between items-center">
                                                     <div>
-                                                        <h3 className="font-semibold text-slate-800 dark:text-white">System Health</h3>
-                                                        <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">Real-time infrastructure metrics</p>
+                                                        <h3 className="font-semibold text-slate-800 dark:text-white">{t('health.title')}</h3>
+                                                        <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">{t('health.subtitle')}</p>
                                                     </div>
                                                     <div className="flex items-center space-x-2">
-                                                        <span className="text-xs text-slate-500 dark:text-gray-400">Auto-refresh: 5s</span>
+                                                        <span className="text-xs text-slate-500 dark:text-gray-400">{t('health.autorefresh')}</span>
                                                         <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                                                     </div>
                                                 </div>
@@ -819,12 +1156,12 @@
                                                         {/* CPU */}
                                                         <div className="bg-slate-50 dark:bg-neutral-900 rounded-lg p-4">
                                                             <div className="flex justify-between items-center mb-2">
-                                                                <span className="text-sm font-medium text-slate-700 dark:text-gray-200">CPU Usage</span>
+                                                                <span className="text-sm font-medium text-slate-700 dark:text-gray-200">{t('health.cpu')}</span>
                                                                 <span className={`text-xs px-2 py-1 rounded-full ${systemHealth?.cpu?.status === 'healthy' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' :
                                                                     systemHealth?.cpu?.status === 'warning' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300' :
                                                                         'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
                                                                     }`}>
-                                                                    {systemHealth?.cpu?.status || 'loading'}
+                                                                    {systemHealth?.cpu?.status || t('status.loading')}
                                                                 </span>
                                                             </div>
                                                             <div className="flex items-end space-x-2 mb-2">
@@ -832,7 +1169,7 @@
                                                                     {systemHealth?.cpu?.usage_percent || 0}%
                                                                 </span>
                                                                 <span className="text-xs text-slate-500 dark:text-gray-400 mb-1">
-                                                                    {systemHealth?.cpu?.cores || 0} cores
+                                                                    {systemHealth?.cpu?.cores || 0} {t('health.cpu.cores')}
                                                                 </span>
                                                             </div>
                                                             <div className="w-full bg-slate-200 dark:bg-neutral-800 rounded-full h-2">
@@ -849,12 +1186,12 @@
                                                         {/* Memory */}
                                                         <div className="bg-slate-50 dark:bg-neutral-900 rounded-lg p-4">
                                                             <div className="flex justify-between items-center mb-2">
-                                                                <span className="text-sm font-medium text-slate-700 dark:text-gray-200">Memory</span>
+                                                                <span className="text-sm font-medium text-slate-700 dark:text-gray-200">{t('health.memory')}</span>
                                                                 <span className={`text-xs px-2 py-1 rounded-full ${systemHealth?.memory?.status === 'healthy' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' :
                                                                     systemHealth?.memory?.status === 'warning' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300' :
                                                                         'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
                                                                     }`}>
-                                                                    {systemHealth?.memory?.status || 'loading'}
+                                                                    {systemHealth?.memory?.status || t('status.loading')}
                                                                 </span>
                                                             </div>
                                                             <div className="flex items-end space-x-2 mb-2">
@@ -879,12 +1216,12 @@
                                                         {/* Disk */}
                                                         <div className="bg-slate-50 dark:bg-neutral-900 rounded-lg p-4">
                                                             <div className="flex justify-between items-center mb-2">
-                                                                <span className="text-sm font-medium text-slate-700 dark:text-gray-200">Disk Space</span>
+                                                                <span className="text-sm font-medium text-slate-700 dark:text-gray-200">{t('health.disk')}</span>
                                                                 <span className={`text-xs px-2 py-1 rounded-full ${systemHealth?.disk?.status === 'healthy' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' :
                                                                     systemHealth?.disk?.status === 'warning' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300' :
                                                                         'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
                                                                     }`}>
-                                                                    {systemHealth?.disk?.status || 'loading'}
+                                                                    {systemHealth?.disk?.status || t('status.loading')}
                                                                 </span>
                                                             </div>
                                                             <div className="flex items-end space-x-2 mb-2">
@@ -892,7 +1229,7 @@
                                                                     {systemHealth?.disk?.usage_percent || 0}%
                                                                 </span>
                                                                 <span className="text-xs text-slate-500 dark:text-gray-400 mb-1">
-                                                                    {systemHealth?.disk?.free_gb || 0} GB free
+                                                                    {systemHealth?.disk?.free_gb || 0} {t('health.disk.free')}
                                                                 </span>
                                                             </div>
                                                             <div className="w-full bg-slate-200 dark:bg-neutral-800 rounded-full h-2">
@@ -917,15 +1254,15 @@
                                                             </div>
                                                             <div className="space-y-1 text-xs text-red-800 dark:text-red-300">
                                                                 <div className="flex justify-between">
-                                                                    <span>Hit Rate:</span>
+                                                                    <span>{t('health.hitrate')}</span>
                                                                     <span className="font-medium">{systemHealth?.redis?.hit_rate_percent || 0}%</span>
                                                                 </div>
                                                                 <div className="flex justify-between">
-                                                                    <span>Clients:</span>
+                                                                    <span>{t('health.clients')}</span>
                                                                     <span className="font-medium">{systemHealth?.redis?.connected_clients || 0}</span>
                                                                 </div>
                                                                 <div className="flex justify-between">
-                                                                    <span>Memory:</span>
+                                                                    <span>{t('health.memory.lbl')}</span>
                                                                     <span className="font-medium">{systemHealth?.redis?.memory_used_mb || 0} MB</span>
                                                                 </div>
                                                             </div>
@@ -939,11 +1276,11 @@
                                                             </div>
                                                             <div className="space-y-1 text-xs text-blue-800 dark:text-blue-300">
                                                                 <div className="flex justify-between">
-                                                                    <span>Tables:</span>
+                                                                    <span>{t('health.tables')}</span>
                                                                     <span className="font-medium">{systemHealth?.dynamodb?.total_tables || 0}</span>
                                                                 </div>
                                                                 <div className="flex justify-between">
-                                                                    <span>Status:</span>
+                                                                    <span>{t('health.status')}</span>
                                                                     <span className="font-medium">{systemHealth?.dynamodb?.status || 'unknown'}</span>
                                                                 </div>
                                                             </div>
@@ -957,11 +1294,11 @@
                                                             </div>
                                                             <div className="space-y-1 text-xs text-orange-800 dark:text-orange-300">
                                                                 <div className="flex justify-between">
-                                                                    <span>Buckets:</span>
+                                                                    <span>{t('health.buckets')}</span>
                                                                     <span className="font-medium">{Object.keys(systemHealth?.s3?.buckets || {}).length}</span>
                                                                 </div>
                                                                 <div className="flex justify-between">
-                                                                    <span>Status:</span>
+                                                                    <span>{t('health.status')}</span>
                                                                     <span className="font-medium">{systemHealth?.s3?.status || 'unknown'}</span>
                                                                 </div>
                                                             </div>
@@ -975,15 +1312,15 @@
                                                             </div>
                                                             <div className="space-y-1 text-xs text-green-800 dark:text-green-300">
                                                                 <div className="flex justify-between">
-                                                                    <span>Uptime:</span>
+                                                                    <span>{t('health.uptime')}</span>
                                                                     <span className="font-medium">{systemHealth?.api?.uptime_formatted || '0m'}</span>
                                                                 </div>
                                                                 <div className="flex justify-between">
-                                                                    <span>Req/min:</span>
+                                                                    <span>{t('health.reqmin')}</span>
                                                                     <span className="font-medium">{systemHealth?.api?.requests_per_minute || 0}</span>
                                                                 </div>
                                                                 <div className="flex justify-between">
-                                                                    <span>Avg Latency:</span>
+                                                                    <span>{t('health.latency')}</span>
                                                                     <span className="font-medium">{systemHealth?.api?.avg_response_time_ms || 0}ms</span>
                                                                 </div>
                                                             </div>
@@ -1023,7 +1360,7 @@
                                             {/* Header */}
                                             <div className="flex items-center justify-between mb-6">
                                                 <div>
-                                                    <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Threat Dashboard</h2>
+                                                    <h2 className="text-2xl font-bold text-slate-800 dark:text-white">{t('threats.title')}</h2>
                                                     <p className="text-sm text-slate-500 dark:text-gray-400 mt-1">Detecciones automáticas en tiempo real</p>
                                                 </div>
                                                 <button onClick={refetchThreats} className="p-2 hover:bg-slate-100 dark:hover:bg-neutral-800 rounded-lg transition-colors text-slate-500 dark:text-gray-400">
@@ -1522,80 +1859,66 @@
 
                                             <div className="bg-white rounded-xl shadow-sm border border-slate-200 dark:border-neutral-700 overflow-hidden">
 
-                                                {/* Tabla con Scroll Vertical y Horizontal */}
-                                                <div className="overflow-auto max-h-[60vh] border border-slate-200 dark:border-neutral-700 rounded-lg">
+                                                {/* Tabla sin scroll horizontal */}
+                                                <div className="overflow-y-auto overflow-x-hidden max-h-[60vh] border border-slate-200 dark:border-neutral-700 rounded-lg">
                                                     <table className="w-full text-sm table-fixed">
+                                                        <colgroup>
+                                                            <col style={{width:'128px'}} />
+                                                            <col style={{width:'148px'}} />
+                                                            <col style={{width:'66px'}} />
+                                                            <col />
+                                                            <col style={{width:'112px'}} />
+                                                            <col style={{width:'42px'}} />
+                                                        </colgroup>
                                                         <thead className="sticky top-0 bg-slate-50 dark:bg-neutral-900 text-slate-600 dark:text-gray-200 uppercase text-xs z-10 shadow-sm">
                                                             <tr>
-                                                                <th className="px-3 py-4 text-left min-w-[90px] sm:w-[120px]">Tipo</th>
-                                                                <th className="px-3 py-4 text-left hidden sm:table-cell sm:w-[130px]">Timestamp</th>
-                                                                <th className="px-3 py-4 text-left hidden md:table-cell md:w-[70px]">Método</th>
-                                                                <th className="px-3 py-4 text-left">Path</th>
-                                                                <th className="px-3 py-4 text-left hidden sm:table-cell sm:w-[110px]">IP Origen</th>
-                                                                <th className="px-3 py-4 text-left hidden lg:table-cell lg:w-[180px]">User Agent</th>
-                                                                <th className="px-3 py-4 text-left min-w-[70px] sm:w-[90px]">Acciones</th>
+                                                                <th className="px-3 py-3 text-left">Tipo</th>
+                                                                <th className="px-3 py-3 text-left">Timestamp</th>
+                                                                <th className="px-3 py-3 text-left">Mét.</th>
+                                                                <th className="px-3 py-3 text-left">Path</th>
+                                                                <th className="px-3 py-3 text-left">IP Origen</th>
+                                                                <th className="px-3 py-3 text-center"></th>
                                                             </tr>
                                                         </thead>
                                                         <tbody className="divide-y divide-slate-200 dark:divide-neutral-800 bg-white dark:bg-neutral-900">
                                                             {trafficLogs?.logs?.map((log, i) => (
-                                                                <tr key={log.id || i} className={`bg-white hover:bg-slate-50 dark:bg-neutral-800 dark:hover:bg-neutral-700 transition-colors ${log.ai_prediction === 'malicious' ? 'dark:bg-neutral-700' : ''}`}>
-                                                                    <td className="px-6 py-4">
+                                                                <tr key={log.id || i} className={`hover:bg-slate-50 dark:hover:bg-neutral-700 transition-colors ${log.ai_prediction === 'malicious' ? 'bg-red-50 dark:bg-red-950' : 'bg-white dark:bg-neutral-800'}`}>
+                                                                    <td className="px-3 py-2">
                                                                         {log.ai_prediction === 'malicious' ? (
-                                                                            <div className="flex flex-col space-y-1">
-                                                                                <span className="px-3 py-1 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded-full text-xs font-bold flex items-center space-x-1 w-fit">
-                                                                                    <span>💀</span>
-                                                                                    <span>MALICIOUS</span>
+                                                                            <div className="flex flex-col space-y-0.5">
+                                                                                <span className="px-2 py-0.5 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded-full text-xs font-bold flex items-center gap-1 w-fit">
+                                                                                    <span>💀</span><span>MALICIOUS</span>
                                                                                 </span>
-                                                                                <span className="text-xs text-red-600 dark:text-red-400 font-mono">
-                                                                                    Risk: {log.risk_score?.toFixed(1)}%
-                                                                                </span>
+                                                                                <span className="text-xs text-red-500 dark:text-red-400 font-mono pl-1">Risk: {log.risk_score?.toFixed(1)}%</span>
                                                                             </div>
                                                                         ) : (
-                                                                            <div className="flex flex-col space-y-1">
-                                                                                <span className="px-3 py-1 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-200 rounded-full text-xs font-medium flex items-center space-x-1 w-fit">
-                                                                                    <span>🟢</span>
-                                                                                    <span>SAFE</span>
+                                                                            <div className="flex flex-col space-y-0.5">
+                                                                                <span className="px-2 py-0.5 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-200 rounded-full text-xs font-medium flex items-center gap-1 w-fit">
+                                                                                    <span>🟢</span><span>SAFE</span>
                                                                                 </span>
-                                                                                <span className="text-xs text-green-600 dark:text-green-400 font-mono">
-                                                                                    Risk: {log.risk_score?.toFixed(1)}%
-                                                                                </span>
+                                                                                <span className="text-xs text-green-500 dark:text-green-400 font-mono pl-1">Risk: {log.risk_score?.toFixed(1)}%</span>
                                                                             </div>
                                                                         )}
                                                                     </td>
-                                                                    <td className="px-6 py-4 text-slate-800 dark:text-gray-200 font-mono text-xs font-medium hidden sm:table-cell">
+                                                                    <td className="px-3 py-2 text-slate-700 dark:text-gray-300 font-mono text-xs">
                                                                         {log.timestamp ? new Date(log.timestamp).toLocaleString('es-MX') : 'N/A'}
                                                                     </td>
-                                                                    <td className="px-6 py-4 hidden md:table-cell">
-                                                                        <span className={`px-2 py-1 rounded font-mono text-xs ${log.method === 'GET' ? 'bg-blue-100 text-blue-700' :
-                                                                            log.method === 'POST' ? 'bg-green-100 text-green-700' :
-                                                                                log.method === 'PUT' ? 'bg-yellow-100 text-yellow-700' :
-                                                                                    log.method === 'DELETE' ? 'bg-red-100 text-red-700' :
-                                                                                        'bg-gray-100 text-gray-700'
-                                                                            }`}>
+                                                                    <td className="px-3 py-2">
+                                                                        <span className={`px-1.5 py-0.5 rounded font-mono text-xs ${log.method === 'GET' ? 'bg-blue-100 text-blue-700' : log.method === 'POST' ? 'bg-green-100 text-green-700' : log.method === 'PUT' ? 'bg-yellow-100 text-yellow-700' : log.method === 'DELETE' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}>
                                                                             {log.method}
                                                                         </span>
                                                                     </td>
-                                                                    <td className="px-3 py-3 font-mono text-slate-900 dark:text-gray-200 overflow-hidden">
+                                                                    <td className="px-3 py-2 font-mono text-slate-900 dark:text-gray-200 text-xs overflow-hidden">
                                                                         <div className="truncate" title={log.path + (log.query_params ? '?' + log.query_params : '')}>
-                                                                            {log.path}
-                                                                            {log.query_params && <span className="text-orange-700 dark:text-orange-400 font-bold">?{decodeURIComponent(log.query_params)}</span>}
+                                                                            {log.path}{log.query_params && <span className="text-orange-600 dark:text-orange-400">?{decodeURIComponent(log.query_params)}</span>}
                                                                         </div>
                                                                     </td>
-                                                                    <td className="px-6 py-4 font-mono text-slate-900 dark:text-gray-200 font-medium hidden sm:table-cell">
+                                                                    <td className="px-3 py-2 font-mono text-slate-800 dark:text-gray-200 text-xs">
                                                                         {log.source_ip}
                                                                     </td>
-                                                                    <td className="px-3 py-3 text-slate-700 dark:text-gray-300 overflow-hidden hidden lg:table-cell">
-                                                                        <div className="truncate text-xs" title={log.user_agent || 'N/A'}>
-                                                                            {log.user_agent || 'N/A'}
-                                                                        </div>
-                                                                    </td>
-                                                                    <td className="px-6 py-4">
-                                                                        <button
-                                                                            onClick={() => setSelectedLog(log)}
-                                                                            className="text-indigo-600 hover:text-indigo-800 text-sm font-medium flex items-center space-x-1"
-                                                                        >
+                                                                    <td className="px-2 py-2 text-center">
+                                                                        <button onClick={() => setSelectedLog(log)} title="Ver detalles" className="text-indigo-500 hover:text-indigo-700 dark:text-indigo-400">
                                                                             <Icons.Eye />
-                                                                            <span>Ver detalles</span>
                                                                         </button>
                                                                     </td>
                                                                 </tr>
@@ -1727,7 +2050,7 @@
                                                         <Icons.Alert />
                                                     </div>
                                                     <p className="text-3xl font-bold">{stats?.threats_today || 0}</p>
-                                                    <p className="text-sm opacity-80 mt-1">Últimas 24 horas</p>
+                                                    <p className="text-sm opacity-80 mt-1">{t('ip.last24h')}</p>
                                                 </div>
                                                 <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-6 text-white shadow-lg hover-lift">
                                                     <div className="flex items-center justify-between mb-4">
@@ -1742,7 +2065,7 @@
                                                         <h3 className="font-semibold">Tiempo Respuesta</h3>
                                                         <Icons.Zap />
                                                     </div>
-                                                    <p className="text-3xl font-bold">{stats?.avg_latency || 0}ms</p>
+                                                    <p className="text-3xl font-bold">{stats?.avg_latency != null ? stats.avg_latency + 'ms' : '—'}</p>
                                                     <p className="text-sm opacity-80 mt-1">Promedio de detección</p>
                                                 </div>
                                             </div>
@@ -1878,9 +2201,9 @@
                                                 <div className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 rounded-xl p-5 border border-red-200 dark:border-red-800">
                                                     <div className="flex items-center justify-between">
                                                         <div>
-                                                            <p className="text-xs font-medium text-red-900 dark:text-red-200 mb-1">Total Blocked</p>
+                                                            <p className="text-xs font-medium text-red-900 dark:text-red-200 mb-1">{t('ip.total_blocked')}</p>
                                                             <h3 className="text-3xl font-bold text-red-700 dark:text-red-300">{ipStats?.total_blocked || 0}</h3>
-                                                            <p className="text-xs text-red-600 dark:text-red-400 mt-1">All time</p>
+                                                            <p className="text-xs text-red-600 dark:text-red-400 mt-1">{t('ip.all_time')}</p>
                                                         </div>
                                                         <div className="p-3 bg-red-200 dark:bg-red-900 rounded-lg">
                                                             <Icons.Shield />
@@ -1891,9 +2214,9 @@
                                                 <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 dark:from-yellow-900/20 dark:to-yellow-800/20 rounded-xl p-5 border border-yellow-200 dark:border-yellow-800">
                                                     <div className="flex items-center justify-between">
                                                         <div>
-                                                            <p className="text-xs font-medium text-yellow-900 dark:text-yellow-200 mb-1">Blocked Today</p>
+                                                            <p className="text-xs font-medium text-yellow-900 dark:text-yellow-200 mb-1">{t('ip.blocked_today')}</p>
                                                             <h3 className="text-3xl font-bold text-yellow-700 dark:text-yellow-300">{ipStats?.blocked_today || 0}</h3>
-                                                            <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">Last 24 hours</p>
+                                                            <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">{t('ip.last24h')}</p>
                                                         </div>
                                                         <div className="p-3 bg-yellow-200 dark:bg-yellow-900 rounded-lg">
                                                             <Icons.Alert />
@@ -1904,9 +2227,9 @@
                                                 <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl p-5 border border-blue-200 dark:border-blue-800">
                                                     <div className="flex items-center justify-between">
                                                         <div>
-                                                            <p className="text-xs font-medium text-blue-900 dark:text-blue-200 mb-1">Auto Blocked</p>
+                                                            <p className="text-xs font-medium text-blue-900 dark:text-blue-200 mb-1">{t('ip.auto_blocked_kpi')}</p>
                                                             <h3 className="text-3xl font-bold text-blue-700 dark:text-blue-300">{ipStats?.auto_blocks || 0}</h3>
-                                                            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">By threat detector</p>
+                                                            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">{t('ip.by_detector')}</p>
                                                         </div>
                                                         <div className="p-3 bg-blue-200 dark:bg-blue-900 rounded-lg">
                                                             <Icons.Cpu />
@@ -1917,9 +2240,9 @@
                                                 <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-xl p-5 border border-green-200 dark:border-green-800">
                                                     <div className="flex items-center justify-between">
                                                         <div>
-                                                            <p className="text-xs font-medium text-green-900 dark:text-green-200 mb-1">Whitelisted</p>
+                                                            <p className="text-xs font-medium text-green-900 dark:text-green-200 mb-1">{t('ip.whitelisted')}</p>
                                                             <h3 className="text-3xl font-bold text-green-700 dark:text-green-300">{ipStats?.total_whitelisted || 0}</h3>
-                                                            <p className="text-xs text-green-600 dark:text-green-400 mt-1">Trusted IPs</p>
+                                                            <p className="text-xs text-green-600 dark:text-green-400 mt-1">{t('ip.trusted')}</p>
                                                         </div>
                                                         <div className="p-3 bg-green-200 dark:bg-green-900 rounded-lg">
                                                             <Icons.Check />
@@ -1932,8 +2255,8 @@
                                             <div className="bg-white dark:bg-black rounded-xl shadow-sm border border-slate-200 dark:border-neutral-700 overflow-hidden mb-6">
                                                 <div className="p-6 border-b border-slate-200 dark:border-neutral-700 flex justify-between items-center">
                                                     <div>
-                                                        <h3 className="font-semibold text-slate-800 dark:text-white">Blocked IPs</h3>
-                                                        <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">Showing {filteredBlockedIPs?.length || 0} blocked addresses</p>
+                                                        <h3 className="font-semibold text-slate-800 dark:text-white">{t('ip.section_blocked')}</h3>
+                                                        <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">Mostrando {filteredBlockedIPs?.length || 0} direcciones bloqueadas</p>
                                                     </div>
                                                     <div className="flex space-x-2">
                                                         <button onClick={() => refetchBlockedIPs()} className="p-2 hover:bg-slate-100 dark:hover:bg-neutral-800 rounded-lg transition-colors">
@@ -1983,7 +2306,7 @@
                                                     <div className="flex flex-col sm:flex-row gap-3">
                                                         <input
                                                             type="text"
-                                                            placeholder="Search IP or reason..."
+                                                            placeholder={t('ip.search')}
                                                             value={ipSearchQuery}
                                                             onChange={(e) => setIpSearchQuery(e.target.value)}
                                                             className="flex-1 px-4 py-2 bg-white dark:bg-black border border-slate-300 dark:border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 dark:text-white"
@@ -1993,11 +2316,11 @@
                                                             onChange={(e) => setIpFilterType(e.target.value)}
                                                             className="px-4 py-2 bg-white dark:bg-black border border-slate-300 dark:border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 dark:text-white"
                                                         >
-                                                            <option value="all">All Blocks</option>
-                                                            <option value="auto">Auto Blocked</option>
-                                                            <option value="manual">Manual Blocks</option>
-                                                            <option value="permanent">Permanent</option>
-                                                            <optgroup label="Threat Type">
+                                                            <option value="all">{t('ip.filter.all')}</option>
+                                                            <option value="auto">{t('ip.filter.auto')}</option>
+                                                            <option value="manual">{t('ip.filter.manual')}</option>
+                                                            <option value="permanent">{t('ip.filter.permanent')}</option>
+                                                            <optgroup label={t('ip.filter.threat_type')}>
                                                                 <option value="sql">SQL Injection</option>
                                                                 <option value="xss">XSS</option>
                                                                 <option value="cmd">Command Injection</option>
@@ -2013,13 +2336,13 @@
                                                     <table className="w-full min-w-[720px] text-sm text-left">
                                                         <thead className="bg-slate-50 dark:bg-neutral-900 text-slate-600 dark:text-gray-200 uppercase text-xs">
                                                             <tr>
-                                                                <th className="px-4 py-3">IP Address</th>
-                                                                <th className="px-4 py-3">Threat Type</th>
-                                                                <th className="px-4 py-3">Reason</th>
-                                                                <th className="px-4 py-3">Blocked At</th>
-                                                                <th className="px-4 py-3">Source</th>
-                                                                <th className="px-4 py-3">TTL</th>
-                                                                <th className="px-4 py-3">Actions</th>
+                                                                <th className="px-4 py-3">{t('ip.col.address')}</th>
+                                                                <th className="px-4 py-3">{t('ip.col.threat')}</th>
+                                                                <th className="px-4 py-3">{t('ip.col.reason')}</th>
+                                                                <th className="px-4 py-3">{t('ip.col.blocked_at')}</th>
+                                                                <th className="px-4 py-3">{t('ip.col.source')}</th>
+                                                                <th className="px-4 py-3">{t('ip.col.ttl')}</th>
+                                                                <th className="px-4 py-3">{t('ip.col.actions')}</th>
                                                             </tr>
                                                         </thead>
                                                         <tbody className="divide-y divide-slate-200 dark:divide-neutral-800">
@@ -2037,7 +2360,7 @@
                                                                 };
                                                                 const threatColor = threatColors[threatType] || 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300';
                                                                 const ttlSec = ip.remaining_seconds;
-                                                                const ttlLabel = ip.permanent ? 'Permanent' : ttlSec > 0 ? (ttlSec >= 3600 ? `${Math.floor(ttlSec/3600)}h ${Math.floor((ttlSec%3600)/60)}m` : `${Math.floor(ttlSec/60)}m`) : 'Expired';
+                                                                const ttlLabel = ip.permanent ? t('ip.type.permanent') : ttlSec > 0 ? (ttlSec >= 3600 ? `${Math.floor(ttlSec/3600)}h ${Math.floor((ttlSec%3600)/60)}m` : `${Math.floor(ttlSec/60)}m`) : t('ip.type.expired');
                                                                 return (
                                                                     <tr key={i} className="bg-white hover:bg-slate-50 dark:bg-neutral-900 dark:hover:bg-neutral-800">
                                                                         <td className="px-4 py-4 font-mono text-slate-800 dark:text-white font-medium">{ip.ip}</td>
@@ -2052,7 +2375,7 @@
                                                                         <td className="px-4 py-4 text-slate-500 dark:text-gray-400 whitespace-nowrap">{new Date(ip.blocked_at).toLocaleString()}</td>
                                                                         <td className="px-4 py-4">
                                                                             <span className={`px-2 py-1 rounded-full text-xs ${ip.auto_blocked ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' : 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'}`}>
-                                                                                {ip.auto_blocked ? 'Auto' : 'Manual'}
+                                                                                {ip.auto_blocked ? t('ip.type.auto') : t('ip.type.manual')}
                                                                             </span>
                                                                         </td>
                                                                         <td className="px-4 py-4">
@@ -2066,10 +2389,10 @@
                                                                                     onClick={() => handleUnblockIP(ip.ip)}
                                                                                     className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs font-medium transition-colors"
                                                                                 >
-                                                                                    Unblock
+                                                                                    {t('ip.unblock')}
                                                                                 </button>
                                                                             ) : (
-                                                                                <span className="text-xs text-slate-400 dark:text-gray-500">Read only</span>
+                                                                                <span className="text-xs text-slate-400 dark:text-gray-500">{t('ip.read_only')}</span>
                                                                             )}
                                                                         </td>
                                                                     </tr>
@@ -2078,7 +2401,7 @@
                                                             {filteredBlockedIPs?.length === 0 && (
                                                                 <tr>
                                                                     <td colSpan="7" className="px-6 py-10 text-center text-slate-400 dark:text-gray-500">
-                                                                        No blocked IPs match the current filter.
+                                                                        {t('ip.no_match')}
                                                                     </td>
                                                                 </tr>
                                                             )}
@@ -2091,8 +2414,8 @@
                                             <div className="bg-white dark:bg-black rounded-xl shadow-sm border border-slate-200 dark:border-neutral-700 overflow-hidden">
                                                 <div className="p-6 border-b border-slate-200 dark:border-neutral-700 flex justify-between items-center">
                                                     <div>
-                                                        <h3 className="font-semibold text-slate-800 dark:text-white">Whitelist</h3>
-                                                        <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">Showing {whitelist?.whitelist?.length || 0} trusted IPs</p>
+                                                        <h3 className="font-semibold text-slate-800 dark:text-white">{t('ip.whitelist_title')}</h3>
+                                                        <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">Mostrando {whitelist?.whitelist?.length || 0} {t('ip.trusted')}</p>
                                                     </div>
                                                     <div className="flex space-x-2">
                                                         <button onClick={() => refetchWhitelist()} className="p-2 hover:bg-slate-100 dark:hover:bg-neutral-800 rounded-lg transition-colors">
@@ -2141,10 +2464,10 @@
                                                     <table className="w-full text-sm text-left">
                                                         <thead className="bg-slate-50 dark:bg-neutral-900 text-slate-600 dark:text-gray-200 uppercase text-xs">
                                                             <tr>
-                                                                <th className="px-6 py-3">IP Address</th>
-                                                                <th className="px-6 py-3">Reason</th>
-                                                                <th className="px-6 py-3">Added At</th>
-                                                                <th className="px-6 py-3">Actions</th>
+                                                                <th className="px-6 py-3">{t('ip.col.address')}</th>
+                                                                <th className="px-6 py-3">{t('ip.col.reason')}</th>
+                                                                <th className="px-6 py-3">Agregada el</th>
+                                                                <th className="px-6 py-3">{t('ip.col.actions')}</th>
                                                             </tr>
                                                         </thead>
                                                         <tbody className="divide-y divide-slate-200 dark:divide-neutral-800">
@@ -2159,10 +2482,10 @@
                                                                                 onClick={() => handleRemoveFromWhitelist(ip.ip)}
                                                                                 className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-medium transition-colors"
                                                                             >
-                                                                                Remove
+                                                                                {t('ip.remove')}
                                                                             </button>
                                                                         ) : (
-                                                                            <span className="text-xs text-slate-400 dark:text-gray-500">Read only</span>
+                                                                            <span className="text-xs text-slate-400 dark:text-gray-500">{t('ip.read_only')}</span>
                                                                         )}
                                                                     </td>
                                                                 </tr>
@@ -2250,28 +2573,31 @@
                                                         <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 sm:p-4">
                                                             <p className="text-xs text-blue-600 dark:text-blue-400 mb-1">Accuracy</p>
                                                             <p className="text-xl sm:text-2xl font-bold text-blue-700 dark:text-blue-300">
-                                                                {abStats?.model_a?.accuracy?.toFixed(1) || '0.0'}%
+                                                                {abStats?.model_a?.accuracy != null ? abStats.model_a.accuracy.toFixed(1) + '%' : '—'}
                                                             </p>
                                                         </div>
                                                         <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 sm:p-4">
                                                             <p className="text-xs text-purple-600 dark:text-purple-400 mb-1">F1-Score</p>
                                                             <p className="text-xl sm:text-2xl font-bold text-purple-700 dark:text-purple-300">
-                                                                {abStats?.model_a?.f1_score?.toFixed(1) || '0.0'}%
+                                                                {abStats?.model_a?.f1_score != null ? abStats.model_a.f1_score.toFixed(1) + '%' : '—'}
                                                             </p>
                                                         </div>
                                                         <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 sm:p-4">
                                                             <p className="text-xs text-green-600 dark:text-green-400 mb-1">Requests</p>
                                                             <p className="text-xl sm:text-2xl font-bold text-green-700 dark:text-green-300">
-                                                                {abStats?.model_a?.total_requests || 0}
+                                                                {abStats?.model_a?.requests != null ? abStats.model_a.requests : (abStats?.model_a?.total_requests ?? '—')}
                                                             </p>
                                                         </div>
                                                         <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-3 sm:p-4">
                                                             <p className="text-xs text-orange-600 dark:text-orange-400 mb-1">Traffic</p>
                                                             <p className="text-xl sm:text-2xl font-bold text-orange-700 dark:text-orange-300">
-                                                                {abStats?.model_a?.traffic_percentage || 90}%
+                                                                {abStats?.model_a?.traffic_pct != null ? abStats.model_a.traffic_pct + '%' : (abStats?.model_a?.traffic_percentage != null ? abStats.model_a.traffic_percentage + '%' : '—')}
                                                             </p>
                                                         </div>
                                                     </div>
+                                                    {abStats?.enabled === false && (
+                                                        <p className="text-xs text-slate-400 dark:text-gray-500 mt-3 text-center">{abStats?.message || 'Sin datos de entrenamiento'}</p>
+                                                    )}
                                                 </div>
 
                                                 {/* Model B Card */}
@@ -2292,28 +2618,31 @@
                                                         <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 sm:p-4">
                                                             <p className="text-xs text-blue-600 dark:text-blue-400 mb-1">Accuracy</p>
                                                             <p className="text-xl sm:text-2xl font-bold text-blue-700 dark:text-blue-300">
-                                                                {abStats?.model_b?.accuracy?.toFixed(1) || '0.0'}%
+                                                                {abStats?.model_b?.accuracy != null ? abStats.model_b.accuracy.toFixed(1) + '%' : '—'}
                                                             </p>
                                                         </div>
                                                         <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 sm:p-4">
                                                             <p className="text-xs text-purple-600 dark:text-purple-400 mb-1">F1-Score</p>
                                                             <p className="text-xl sm:text-2xl font-bold text-purple-700 dark:text-purple-300">
-                                                                {abStats?.model_b?.f1_score?.toFixed(1) || '0.0'}%
+                                                                {abStats?.model_b?.f1_score != null ? abStats.model_b.f1_score.toFixed(1) + '%' : '—'}
                                                             </p>
                                                         </div>
                                                         <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 sm:p-4">
                                                             <p className="text-xs text-green-600 dark:text-green-400 mb-1">Requests</p>
                                                             <p className="text-xl sm:text-2xl font-bold text-green-700 dark:text-green-300">
-                                                                {abStats?.model_b?.total_requests || 0}
+                                                                {abStats?.model_b?.requests != null ? abStats.model_b.requests : (abStats?.model_b?.total_requests ?? '—')}
                                                             </p>
                                                         </div>
                                                         <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-3 sm:p-4">
                                                             <p className="text-xs text-orange-600 dark:text-orange-400 mb-1">Traffic</p>
                                                             <p className="text-xl sm:text-2xl font-bold text-orange-700 dark:text-orange-300">
-                                                                {abStats?.model_b?.traffic_percentage || 10}%
+                                                                {abStats?.model_b?.traffic_pct != null ? abStats.model_b.traffic_pct + '%' : (abStats?.model_b?.traffic_percentage != null ? abStats.model_b.traffic_percentage + '%' : '—')}
                                                             </p>
                                                         </div>
                                                     </div>
+                                                    {abStats?.enabled === false && (
+                                                        <p className="text-xs text-slate-400 dark:text-gray-500 mt-3 text-center">Sin datos de entrenamiento</p>
+                                                    )}
                                                 </div>
                                             </div>
 
@@ -2385,20 +2714,20 @@
                                                         <div className="flex justify-between text-sm mb-2">
                                                             <span className="text-slate-600 dark:text-gray-400">Accuracy</span>
                                                             <span className="text-slate-800 dark:text-white font-medium">
-                                                                Diff: {abStats?.comparison?.accuracy_diff?.toFixed(2) || '0.00'}%
+                                                                {abStats?.comparison?.accuracy_diff != null ? `Diff: ${abStats.comparison.accuracy_diff.toFixed(2)}%` : 'Sin datos'}
                                                             </span>
                                                         </div>
                                                         <div className="flex gap-2">
                                                             <div className="flex-1 bg-blue-100 dark:bg-blue-900/30 rounded-lg p-3 text-center">
                                                                 <p className="text-xs text-blue-600 dark:text-blue-400 mb-1">Model A</p>
                                                                 <p className="text-lg font-bold text-blue-700 dark:text-blue-300">
-                                                                    {abStats?.model_a?.accuracy?.toFixed(2) || '0.00'}%
+                                                                    {abStats?.model_a?.accuracy != null ? abStats.model_a.accuracy.toFixed(2) + '%' : '—'}
                                                                 </p>
                                                             </div>
                                                             <div className="flex-1 bg-green-100 dark:bg-green-900/30 rounded-lg p-3 text-center">
                                                                 <p className="text-xs text-green-600 dark:text-green-400 mb-1">Model B</p>
                                                                 <p className="text-lg font-bold text-green-700 dark:text-green-300">
-                                                                    {abStats?.model_b?.accuracy?.toFixed(2) || '0.00'}%
+                                                                    {abStats?.model_b?.accuracy != null ? abStats.model_b.accuracy.toFixed(2) + '%' : '—'}
                                                                 </p>
                                                             </div>
                                                         </div>
@@ -2409,20 +2738,20 @@
                                                         <div className="flex justify-between text-sm mb-2">
                                                             <span className="text-slate-600 dark:text-gray-400">F1-Score</span>
                                                             <span className="text-slate-800 dark:text-white font-medium">
-                                                                Diff: {abStats?.comparison?.f1_diff?.toFixed(2) || '0.00'}%
+                                                                {abStats?.comparison?.f1_diff != null ? `Diff: ${abStats.comparison.f1_diff.toFixed(2)}%` : 'Sin datos'}
                                                             </span>
                                                         </div>
                                                         <div className="flex gap-2">
                                                             <div className="flex-1 bg-purple-100 dark:bg-purple-900/30 rounded-lg p-3 text-center">
                                                                 <p className="text-xs text-purple-600 dark:text-purple-400 mb-1">Model A</p>
                                                                 <p className="text-lg font-bold text-purple-700 dark:text-purple-300">
-                                                                    {abStats?.model_a?.f1_score?.toFixed(2) || '0.00'}%
+                                                                    {abStats?.model_a?.f1_score != null ? abStats.model_a.f1_score.toFixed(2) + '%' : '—'}
                                                                 </p>
                                                             </div>
                                                             <div className="flex-1 bg-pink-100 dark:bg-pink-900/30 rounded-lg p-3 text-center">
                                                                 <p className="text-xs text-pink-600 dark:text-pink-400 mb-1">Model B</p>
                                                                 <p className="text-lg font-bold text-pink-700 dark:text-pink-300">
-                                                                    {abStats?.model_b?.f1_score?.toFixed(2) || '0.00'}%
+                                                                    {abStats?.model_b?.f1_score != null ? abStats.model_b.f1_score.toFixed(2) + '%' : '—'}
                                                                 </p>
                                                             </div>
                                                         </div>
@@ -2649,7 +2978,7 @@
                                                         </div>
                                                     </div>
                                                     <h3 className="text-3xl font-bold text-blue-700 dark:text-blue-300">
-                                                        {clStats?.model_performance?.f1_score?.toFixed(2) ?? mlPerf?.xgboost?.metrics?.f1_score ?? '—'}%
+                                                        {(() => { const v = clStats?.model_performance?.f1_score ?? mlPerf?.xgboost?.metrics?.f1_score; return v != null ? `${typeof v === 'number' ? v.toFixed(2) : v}%` : '—'; })()}
                                                     </h3>
                                                     <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">Model quality</p>
                                                 </div>
@@ -2662,7 +2991,7 @@
                                                         </div>
                                                     </div>
                                                     <h3 className="text-3xl font-bold text-green-700 dark:text-green-300">
-                                                        {clStats?.model_performance?.accuracy?.toFixed(2) ?? mlPerf?.xgboost?.metrics?.accuracy ?? '—'}%
+                                                        {(() => { const v = clStats?.model_performance?.accuracy ?? mlPerf?.xgboost?.metrics?.accuracy; return v != null ? `${typeof v === 'number' ? v.toFixed(2) : v}%` : '—'; })()}
                                                     </h3>
                                                     <p className="text-xs text-green-600 dark:text-green-400 mt-1">Overall correctness</p>
                                                 </div>
@@ -2675,7 +3004,7 @@
                                                         </div>
                                                     </div>
                                                     <h3 className="text-3xl font-bold text-purple-700 dark:text-purple-300">
-                                                        {clStats?.model_performance?.precision?.toFixed(2) ?? mlPerf?.xgboost?.metrics?.precision ?? '—'}%
+                                                        {(() => { const v = clStats?.model_performance?.precision ?? mlPerf?.xgboost?.metrics?.precision; return v != null ? `${typeof v === 'number' ? v.toFixed(2) : v}%` : '—'; })()}
                                                     </h3>
                                                     <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">True positives</p>
                                                 </div>
@@ -2688,7 +3017,7 @@
                                                         </div>
                                                     </div>
                                                     <h3 className="text-3xl font-bold text-orange-700 dark:text-orange-300">
-                                                        {clStats?.model_performance?.recall?.toFixed(2) ?? mlPerf?.xgboost?.metrics?.recall ?? '—'}%
+                                                        {(() => { const v = clStats?.model_performance?.recall ?? mlPerf?.xgboost?.metrics?.recall; return v != null ? `${typeof v === 'number' ? v.toFixed(2) : v}%` : '—'; })()}
                                                     </h3>
                                                     <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">Threat detection</p>
                                                 </div>
@@ -2810,6 +3139,16 @@
                                             </div>
                                             </>}
                                         </>
+                                    )}
+
+                                    {/* ─── WhatsApp Panel ─── */}
+                                    {tab === 'whatsapp' && (
+                                        <WhatsAppPanel token={token} />
+                                    )}
+
+                                    {/* ─── Email Panel ─── */}
+                                    {tab === 'email' && (
+                                        <EmailPanel token={token} />
                                     )}
                                 </div>
                             </div>

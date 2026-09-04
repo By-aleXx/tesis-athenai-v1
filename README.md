@@ -1,3 +1,4 @@
+
 # AthenAI - Sistema Híbrido de Detección de Intrusos
 
 ![Dashboard Preview](athenai_dashboard_preview.png)
@@ -39,18 +40,22 @@ AthenAI es una solución avanzada de ciberseguridad que combina **Modelos de Mac
 ## 📂 Estructura del Proyecto
 
 - `athenai-dashboard/`: Código fuente del frontend y backend API.
+  - `app/`: Paquete Python del backend, organizado por dominio (`auth/`, `security/`, `ml/`, `aws/`, `notifications/`, `core/`).
+  - `app/core/api_backend.py`: Servidor Flask.
   - `assets/js/`: Librerías JS core (React, Recharts) para modo offline.
-  - `api_backend.py`: Servidor Flask.
   - `index.html`: Punto de entrada del Dashboard.
+  - `tests/`: Suite de pruebas del dashboard.
 - `training/`: Scripts de entrenamiento de modelos ML.
-- `lambda_function.py`: Lógica de detección para AWS Lambda.
+- `lambda/`: Variantes de la función AWS Lambda (ver `lambda/README.md` para cuál es la productiva) y sus paquetes de despliegue.
+- `deploy/`: Scripts de deployment y lanzadores (`run.sh`, `run.ps1`, `deploy_localstack.sh`, etc.).
+- `docs/`: Documentación técnica del proyecto.
 
 ## 🧪 Pruebas
 
 Para verificar la integridad del sistema:
 ```bash
 cd athenai-dashboard
-python3 test_dashboard_integration.py
+python3 tests/test_dashboard_integration.py
 ```
 
 ## 📄 Licencia
